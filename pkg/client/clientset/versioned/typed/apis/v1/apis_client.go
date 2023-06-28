@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The Kubernetes Authors.
+Copyright 2022 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,8 @@ limitations under the License.
 package v1
 
 import (
+	"net/http"
+	
 	rest "k8s.io/client-go/rest"
 	v1 "sigs.k8s.io/secrets-store-csi-driver/apis/v1"
 	"sigs.k8s.io/secrets-store-csi-driver/pkg/client/clientset/versioned/scheme"
@@ -26,6 +28,7 @@ import (
 
 type SecretsstoreV1Interface interface {
 	RESTClient() rest.Interface
+	SecretProviderCachesGetter
 	SecretProviderClassesGetter
 	SecretProviderClassPodStatusesGetter
 }
@@ -33,6 +36,10 @@ type SecretsstoreV1Interface interface {
 // SecretsstoreV1Client is used to interact with features provided by the secrets-store.csi.x-k8s.io group.
 type SecretsstoreV1Client struct {
 	restClient rest.Interface
+}
+
+func (c *SecretsstoreV1Client) SecretProviderCaches(namespace string) SecretProviderCacheInterface {
+	return newSecretProviderCaches(c, namespace)
 }
 
 func (c *SecretsstoreV1Client) SecretProviderClasses(namespace string) SecretProviderClassInterface {
@@ -44,12 +51,28 @@ func (c *SecretsstoreV1Client) SecretProviderClassPodStatuses(namespace string) 
 }
 
 // NewForConfig creates a new SecretsstoreV1Client for the given config.
+// NewForConfig is equivalent to NewForConfigAndClient(c, httpClient),
+// where httpClient was generated with rest.HTTPClientFor(c).
 func NewForConfig(c *rest.Config) (*SecretsstoreV1Client, error) {
 	config := *c
 	if err := setConfigDefaults(&config); err != nil {
 		return nil, err
 	}
-	client, err := rest.RESTClientFor(&config)
+	httpClient, err := rest.HTTPClientFor(&config)
+	if err != nil {
+		return nil, err
+	}
+	return NewForConfigAndClient(&config, httpClient)
+}
+
+// NewForConfigAndClient creates a new SecretsstoreV1Client for the given config and http client.
+// Note the http client provided takes precedence over the configured transport values.
+func NewForConfigAndClient(c *rest.Config, h *http.Client) (*SecretsstoreV1Client, error) {
+	config := *c
+	if err := setConfigDefaults(&config); err != nil {
+		return nil, err
+	}
+	client, err := rest.RESTClientForConfigAndClient(&config, h)
 	if err != nil {
 		return nil, err
 	}

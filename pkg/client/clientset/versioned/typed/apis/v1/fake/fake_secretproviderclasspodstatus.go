@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The Kubernetes Authors.
+Copyright 2022 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,13 +21,12 @@ package fake
 import (
 	"context"
 
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
-	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
-	apisv1 "sigs.k8s.io/secrets-store-csi-driver/apis/v1"
+	v1 "sigs.k8s.io/secrets-store-csi-driver/apis/v1"
 )
 
 // FakeSecretProviderClassPodStatuses implements SecretProviderClassPodStatusInterface
@@ -36,25 +35,25 @@ type FakeSecretProviderClassPodStatuses struct {
 	ns   string
 }
 
-var secretproviderclasspodstatusesResource = schema.GroupVersionResource{Group: "secrets-store.csi.x-k8s.io", Version: "v1", Resource: "secretproviderclasspodstatuses"}
+var secretproviderclasspodstatusesResource = v1.SchemeGroupVersion.WithResource("secretproviderclasspodstatuses")
 
-var secretproviderclasspodstatusesKind = schema.GroupVersionKind{Group: "secrets-store.csi.x-k8s.io", Version: "v1", Kind: "SecretProviderClassPodStatus"}
+var secretproviderclasspodstatusesKind = v1.SchemeGroupVersion.WithKind("SecretProviderClassPodStatus")
 
 // Get takes name of the secretProviderClassPodStatus, and returns the corresponding secretProviderClassPodStatus object, and an error if there is any.
-func (c *FakeSecretProviderClassPodStatuses) Get(ctx context.Context, name string, options v1.GetOptions) (result *apisv1.SecretProviderClassPodStatus, err error) {
+func (c *FakeSecretProviderClassPodStatuses) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.SecretProviderClassPodStatus, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewGetAction(secretproviderclasspodstatusesResource, c.ns, name), &apisv1.SecretProviderClassPodStatus{})
+		Invokes(testing.NewGetAction(secretproviderclasspodstatusesResource, c.ns, name), &v1.SecretProviderClassPodStatus{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*apisv1.SecretProviderClassPodStatus), err
+	return obj.(*v1.SecretProviderClassPodStatus), err
 }
 
 // List takes label and field selectors, and returns the list of SecretProviderClassPodStatuses that match those selectors.
-func (c *FakeSecretProviderClassPodStatuses) List(ctx context.Context, opts v1.ListOptions) (result *apisv1.SecretProviderClassPodStatusList, err error) {
+func (c *FakeSecretProviderClassPodStatuses) List(ctx context.Context, opts metav1.ListOptions) (result *v1.SecretProviderClassPodStatusList, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewListAction(secretproviderclasspodstatusesResource, secretproviderclasspodstatusesKind, c.ns, opts), &apisv1.SecretProviderClassPodStatusList{})
+		Invokes(testing.NewListAction(secretproviderclasspodstatusesResource, secretproviderclasspodstatusesKind, c.ns, opts), &v1.SecretProviderClassPodStatusList{})
 
 	if obj == nil {
 		return nil, err
@@ -64,8 +63,8 @@ func (c *FakeSecretProviderClassPodStatuses) List(ctx context.Context, opts v1.L
 	if label == nil {
 		label = labels.Everything()
 	}
-	list := &apisv1.SecretProviderClassPodStatusList{ListMeta: obj.(*apisv1.SecretProviderClassPodStatusList).ListMeta}
-	for _, item := range obj.(*apisv1.SecretProviderClassPodStatusList).Items {
+	list := &v1.SecretProviderClassPodStatusList{ListMeta: obj.(*v1.SecretProviderClassPodStatusList).ListMeta}
+	for _, item := range obj.(*v1.SecretProviderClassPodStatusList).Items {
 		if label.Matches(labels.Set(item.Labels)) {
 			list.Items = append(list.Items, item)
 		}
@@ -74,69 +73,69 @@ func (c *FakeSecretProviderClassPodStatuses) List(ctx context.Context, opts v1.L
 }
 
 // Watch returns a watch.Interface that watches the requested secretProviderClassPodStatuses.
-func (c *FakeSecretProviderClassPodStatuses) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
+func (c *FakeSecretProviderClassPodStatuses) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
 		InvokesWatch(testing.NewWatchAction(secretproviderclasspodstatusesResource, c.ns, opts))
 
 }
 
 // Create takes the representation of a secretProviderClassPodStatus and creates it.  Returns the server's representation of the secretProviderClassPodStatus, and an error, if there is any.
-func (c *FakeSecretProviderClassPodStatuses) Create(ctx context.Context, secretProviderClassPodStatus *apisv1.SecretProviderClassPodStatus, opts v1.CreateOptions) (result *apisv1.SecretProviderClassPodStatus, err error) {
+func (c *FakeSecretProviderClassPodStatuses) Create(ctx context.Context, secretProviderClassPodStatus *v1.SecretProviderClassPodStatus, opts metav1.CreateOptions) (result *v1.SecretProviderClassPodStatus, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewCreateAction(secretproviderclasspodstatusesResource, c.ns, secretProviderClassPodStatus), &apisv1.SecretProviderClassPodStatus{})
+		Invokes(testing.NewCreateAction(secretproviderclasspodstatusesResource, c.ns, secretProviderClassPodStatus), &v1.SecretProviderClassPodStatus{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*apisv1.SecretProviderClassPodStatus), err
+	return obj.(*v1.SecretProviderClassPodStatus), err
 }
 
 // Update takes the representation of a secretProviderClassPodStatus and updates it. Returns the server's representation of the secretProviderClassPodStatus, and an error, if there is any.
-func (c *FakeSecretProviderClassPodStatuses) Update(ctx context.Context, secretProviderClassPodStatus *apisv1.SecretProviderClassPodStatus, opts v1.UpdateOptions) (result *apisv1.SecretProviderClassPodStatus, err error) {
+func (c *FakeSecretProviderClassPodStatuses) Update(ctx context.Context, secretProviderClassPodStatus *v1.SecretProviderClassPodStatus, opts metav1.UpdateOptions) (result *v1.SecretProviderClassPodStatus, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewUpdateAction(secretproviderclasspodstatusesResource, c.ns, secretProviderClassPodStatus), &apisv1.SecretProviderClassPodStatus{})
+		Invokes(testing.NewUpdateAction(secretproviderclasspodstatusesResource, c.ns, secretProviderClassPodStatus), &v1.SecretProviderClassPodStatus{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*apisv1.SecretProviderClassPodStatus), err
+	return obj.(*v1.SecretProviderClassPodStatus), err
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeSecretProviderClassPodStatuses) UpdateStatus(ctx context.Context, secretProviderClassPodStatus *apisv1.SecretProviderClassPodStatus, opts v1.UpdateOptions) (*apisv1.SecretProviderClassPodStatus, error) {
+func (c *FakeSecretProviderClassPodStatuses) UpdateStatus(ctx context.Context, secretProviderClassPodStatus *v1.SecretProviderClassPodStatus, opts metav1.UpdateOptions) (*v1.SecretProviderClassPodStatus, error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewUpdateSubresourceAction(secretproviderclasspodstatusesResource, "status", c.ns, secretProviderClassPodStatus), &apisv1.SecretProviderClassPodStatus{})
+		Invokes(testing.NewUpdateSubresourceAction(secretproviderclasspodstatusesResource, "status", c.ns, secretProviderClassPodStatus), &v1.SecretProviderClassPodStatus{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*apisv1.SecretProviderClassPodStatus), err
+	return obj.(*v1.SecretProviderClassPodStatus), err
 }
 
 // Delete takes name of the secretProviderClassPodStatus and deletes it. Returns an error if one occurs.
-func (c *FakeSecretProviderClassPodStatuses) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
+func (c *FakeSecretProviderClassPodStatuses) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewDeleteAction(secretproviderclasspodstatusesResource, c.ns, name), &apisv1.SecretProviderClassPodStatus{})
+		Invokes(testing.NewDeleteActionWithOptions(secretproviderclasspodstatusesResource, c.ns, name, opts), &v1.SecretProviderClassPodStatus{})
 
 	return err
 }
 
 // DeleteCollection deletes a collection of objects.
-func (c *FakeSecretProviderClassPodStatuses) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
+func (c *FakeSecretProviderClassPodStatuses) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	action := testing.NewDeleteCollectionAction(secretproviderclasspodstatusesResource, c.ns, listOpts)
 
-	_, err := c.Fake.Invokes(action, &apisv1.SecretProviderClassPodStatusList{})
+	_, err := c.Fake.Invokes(action, &v1.SecretProviderClassPodStatusList{})
 	return err
 }
 
 // Patch applies the patch and returns the patched secretProviderClassPodStatus.
-func (c *FakeSecretProviderClassPodStatuses) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *apisv1.SecretProviderClassPodStatus, err error) {
+func (c *FakeSecretProviderClassPodStatuses) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.SecretProviderClassPodStatus, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewPatchSubresourceAction(secretproviderclasspodstatusesResource, c.ns, name, pt, data, subresources...), &apisv1.SecretProviderClassPodStatus{})
+		Invokes(testing.NewPatchSubresourceAction(secretproviderclasspodstatusesResource, c.ns, name, pt, data, subresources...), &v1.SecretProviderClassPodStatus{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*apisv1.SecretProviderClassPodStatus), err
+	return obj.(*v1.SecretProviderClassPodStatus), err
 }

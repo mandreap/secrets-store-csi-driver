@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The Kubernetes Authors.
+Copyright 2022 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,13 +21,12 @@ package fake
 import (
 	"context"
 
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
-	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
-	apisv1 "sigs.k8s.io/secrets-store-csi-driver/apis/v1"
+	v1 "sigs.k8s.io/secrets-store-csi-driver/apis/v1"
 )
 
 // FakeSecretProviderClasses implements SecretProviderClassInterface
@@ -36,25 +35,25 @@ type FakeSecretProviderClasses struct {
 	ns   string
 }
 
-var secretproviderclassesResource = schema.GroupVersionResource{Group: "secrets-store.csi.x-k8s.io", Version: "v1", Resource: "secretproviderclasses"}
+var secretproviderclassesResource = v1.SchemeGroupVersion.WithResource("secretproviderclasses")
 
-var secretproviderclassesKind = schema.GroupVersionKind{Group: "secrets-store.csi.x-k8s.io", Version: "v1", Kind: "SecretProviderClass"}
+var secretproviderclassesKind = v1.SchemeGroupVersion.WithKind("SecretProviderClass")
 
 // Get takes name of the secretProviderClass, and returns the corresponding secretProviderClass object, and an error if there is any.
-func (c *FakeSecretProviderClasses) Get(ctx context.Context, name string, options v1.GetOptions) (result *apisv1.SecretProviderClass, err error) {
+func (c *FakeSecretProviderClasses) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.SecretProviderClass, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewGetAction(secretproviderclassesResource, c.ns, name), &apisv1.SecretProviderClass{})
+		Invokes(testing.NewGetAction(secretproviderclassesResource, c.ns, name), &v1.SecretProviderClass{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*apisv1.SecretProviderClass), err
+	return obj.(*v1.SecretProviderClass), err
 }
 
 // List takes label and field selectors, and returns the list of SecretProviderClasses that match those selectors.
-func (c *FakeSecretProviderClasses) List(ctx context.Context, opts v1.ListOptions) (result *apisv1.SecretProviderClassList, err error) {
+func (c *FakeSecretProviderClasses) List(ctx context.Context, opts metav1.ListOptions) (result *v1.SecretProviderClassList, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewListAction(secretproviderclassesResource, secretproviderclassesKind, c.ns, opts), &apisv1.SecretProviderClassList{})
+		Invokes(testing.NewListAction(secretproviderclassesResource, secretproviderclassesKind, c.ns, opts), &v1.SecretProviderClassList{})
 
 	if obj == nil {
 		return nil, err
@@ -64,8 +63,8 @@ func (c *FakeSecretProviderClasses) List(ctx context.Context, opts v1.ListOption
 	if label == nil {
 		label = labels.Everything()
 	}
-	list := &apisv1.SecretProviderClassList{ListMeta: obj.(*apisv1.SecretProviderClassList).ListMeta}
-	for _, item := range obj.(*apisv1.SecretProviderClassList).Items {
+	list := &v1.SecretProviderClassList{ListMeta: obj.(*v1.SecretProviderClassList).ListMeta}
+	for _, item := range obj.(*v1.SecretProviderClassList).Items {
 		if label.Matches(labels.Set(item.Labels)) {
 			list.Items = append(list.Items, item)
 		}
@@ -74,69 +73,69 @@ func (c *FakeSecretProviderClasses) List(ctx context.Context, opts v1.ListOption
 }
 
 // Watch returns a watch.Interface that watches the requested secretProviderClasses.
-func (c *FakeSecretProviderClasses) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
+func (c *FakeSecretProviderClasses) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
 		InvokesWatch(testing.NewWatchAction(secretproviderclassesResource, c.ns, opts))
 
 }
 
 // Create takes the representation of a secretProviderClass and creates it.  Returns the server's representation of the secretProviderClass, and an error, if there is any.
-func (c *FakeSecretProviderClasses) Create(ctx context.Context, secretProviderClass *apisv1.SecretProviderClass, opts v1.CreateOptions) (result *apisv1.SecretProviderClass, err error) {
+func (c *FakeSecretProviderClasses) Create(ctx context.Context, secretProviderClass *v1.SecretProviderClass, opts metav1.CreateOptions) (result *v1.SecretProviderClass, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewCreateAction(secretproviderclassesResource, c.ns, secretProviderClass), &apisv1.SecretProviderClass{})
+		Invokes(testing.NewCreateAction(secretproviderclassesResource, c.ns, secretProviderClass), &v1.SecretProviderClass{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*apisv1.SecretProviderClass), err
+	return obj.(*v1.SecretProviderClass), err
 }
 
 // Update takes the representation of a secretProviderClass and updates it. Returns the server's representation of the secretProviderClass, and an error, if there is any.
-func (c *FakeSecretProviderClasses) Update(ctx context.Context, secretProviderClass *apisv1.SecretProviderClass, opts v1.UpdateOptions) (result *apisv1.SecretProviderClass, err error) {
+func (c *FakeSecretProviderClasses) Update(ctx context.Context, secretProviderClass *v1.SecretProviderClass, opts metav1.UpdateOptions) (result *v1.SecretProviderClass, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewUpdateAction(secretproviderclassesResource, c.ns, secretProviderClass), &apisv1.SecretProviderClass{})
+		Invokes(testing.NewUpdateAction(secretproviderclassesResource, c.ns, secretProviderClass), &v1.SecretProviderClass{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*apisv1.SecretProviderClass), err
+	return obj.(*v1.SecretProviderClass), err
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeSecretProviderClasses) UpdateStatus(ctx context.Context, secretProviderClass *apisv1.SecretProviderClass, opts v1.UpdateOptions) (*apisv1.SecretProviderClass, error) {
+func (c *FakeSecretProviderClasses) UpdateStatus(ctx context.Context, secretProviderClass *v1.SecretProviderClass, opts metav1.UpdateOptions) (*v1.SecretProviderClass, error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewUpdateSubresourceAction(secretproviderclassesResource, "status", c.ns, secretProviderClass), &apisv1.SecretProviderClass{})
+		Invokes(testing.NewUpdateSubresourceAction(secretproviderclassesResource, "status", c.ns, secretProviderClass), &v1.SecretProviderClass{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*apisv1.SecretProviderClass), err
+	return obj.(*v1.SecretProviderClass), err
 }
 
 // Delete takes name of the secretProviderClass and deletes it. Returns an error if one occurs.
-func (c *FakeSecretProviderClasses) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
+func (c *FakeSecretProviderClasses) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewDeleteAction(secretproviderclassesResource, c.ns, name), &apisv1.SecretProviderClass{})
+		Invokes(testing.NewDeleteActionWithOptions(secretproviderclassesResource, c.ns, name, opts), &v1.SecretProviderClass{})
 
 	return err
 }
 
 // DeleteCollection deletes a collection of objects.
-func (c *FakeSecretProviderClasses) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
+func (c *FakeSecretProviderClasses) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	action := testing.NewDeleteCollectionAction(secretproviderclassesResource, c.ns, listOpts)
 
-	_, err := c.Fake.Invokes(action, &apisv1.SecretProviderClassList{})
+	_, err := c.Fake.Invokes(action, &v1.SecretProviderClassList{})
 	return err
 }
 
 // Patch applies the patch and returns the patched secretProviderClass.
-func (c *FakeSecretProviderClasses) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *apisv1.SecretProviderClass, err error) {
+func (c *FakeSecretProviderClasses) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.SecretProviderClass, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewPatchSubresourceAction(secretproviderclassesResource, c.ns, name, pt, data, subresources...), &apisv1.SecretProviderClass{})
+		Invokes(testing.NewPatchSubresourceAction(secretproviderclassesResource, c.ns, name, pt, data, subresources...), &v1.SecretProviderClass{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*apisv1.SecretProviderClass), err
+	return obj.(*v1.SecretProviderClass), err
 }
