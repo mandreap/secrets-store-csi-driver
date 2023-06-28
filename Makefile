@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-GOPATH  := $(shell go env GOPATH)
-GOARCH  := $(shell go env GOARCH)
-GOOS    := $(shell go env GOOS)
-GOPROXY := $(shell go env GOPROXY)
+GOPATH  := $(shell go env GOPATH ; )
+GOARCH  := $(shell go env GOARCH ; )
+GOOS    := $(shell go env GOOS ; )
+GOPROXY := $(shell go env GOPROXY ; )
 
 ORG_PATH=sigs.k8s.io
 PROJECT_NAME := secrets-store-csi-driver
@@ -48,7 +48,7 @@ BUILD_VERSION_VAR := $(REPO_PATH)/pkg/version.BuildVersion
 VCS_VAR := $(REPO_PATH)/pkg/version.Vcs
 LDFLAGS ?= "-X $(BUILD_TIME_VAR)=$(BUILD_TIMESTAMP) -X $(BUILD_VERSION_VAR)=$(IMAGE_VERSION) -X $(VCS_VAR)=$(BUILD_COMMIT)"
 
-GO_FILES=$(shell go list ./... | grep -v /test/sanity)
+GO_FILES=$(shell go list ./... ; | grep -v /test/sanity)
 TOOLS_MOD_DIR := ./hack/tools
 TOOLS_DIR := $(abspath ./hack/tools)
 TOOLS_BIN_DIR := $(TOOLS_DIR)/bin
@@ -119,8 +119,8 @@ CRD_OPTIONS ?= "crd:crdVersions=v1"
 ## --------------------------------------
 ## Validate golang version
 ## --------------------------------------
-GO_MAJOR_VERSION = $(shell go version | cut -c 14- | cut -d' ' -f1 | cut -d'.' -f1)
-GO_MINOR_VERSION = $(shell go version | cut -c 14- | cut -d' ' -f1 | cut -d'.' -f2)
+GO_MAJOR_VERSION = $(shell go version ; | cut -c 14- | cut -d' ' -f1 | cut -d'.' -f1)
+GO_MINOR_VERSION = $(shell go version ; | cut -c 14- | cut -d' ' -f1 | cut -d'.' -f2)
 MINIMUM_SUPPORTED_GO_MAJOR_VERSION = 1
 MINIMUM_SUPPORTED_GO_MINOR_VERSION = 16
 GO_VERSION_VALIDATION_ERR_MSG = Golang version is not supported, please update to at least $(MINIMUM_SUPPORTED_GO_MAJOR_VERSION).$(MINIMUM_SUPPORTED_GO_MINOR_VERSION)
@@ -146,13 +146,13 @@ test: go-test
 
 .PHONY: go-test # Run unit tests
 go-test:
-	go test -count=1 $(GO_FILES) -v -coverprofile cover.out
+	go test -count=1 $(GO_FILES) -v -coverprofile cover.out ; 
 	cd test/e2eprovider && go test ./... -tags e2e -count=1 -v
 
 # skipping Controller tests as this driver only implements Node and Identity service.
 .PHONY: sanity-test # Run CSI sanity tests for the driver
 sanity-test:
-	go test -v ./test/sanity -ginkgo.skip=Controller\|should.work\|NodeStageVolume
+	go test -v ./test/sanity -ginkgo.skip=Controller\|should.work\|NodeStageVolume ; 
 
 .PHONY: image-scan
 image-scan: $(TRIVY)
@@ -169,23 +169,23 @@ image-scan: $(TRIVY)
 
 $(CONTROLLER_GEN): $(TOOLS_MOD_DIR)/go.mod $(TOOLS_MOD_DIR)/go.sum $(TOOLS_MOD_DIR)/tools.go ## Build controller-gen from tools folder.
 	cd $(TOOLS_MOD_DIR) && \
-		GOPROXY=$(GOPROXY) go build -tags=tools -o $(TOOLS_BIN_DIR)/controller-gen sigs.k8s.io/controller-tools/cmd/controller-gen
+		GOPROXY=$(GOPROXY) go build -tags=tools -o $(TOOLS_BIN_DIR)/controller-gen sigs.k8s.io/controller-tools/cmd/controller-gen ; 
 
 $(GOLANGCI_LINT): ## Build golangci-lint from tools folder.
 	cd $(TOOLS_MOD_DIR) && \
-		GOPROXY=$(GOPROXY) go build -o $(TOOLS_BIN_DIR)/golangci-lint github.com/golangci/golangci-lint/cmd/golangci-lint
+		GOPROXY=$(GOPROXY) go build -o $(TOOLS_BIN_DIR)/golangci-lint github.com/golangci/golangci-lint/cmd/golangci-lint ; 
 
 $(KUSTOMIZE): ## Build kustomize from tools folder.
 	cd $(TOOLS_MOD_DIR) && \
-		GOPROXY=$(GOPROXY) go build -tags=tools -o $(TOOLS_BIN_DIR)/kustomize sigs.k8s.io/kustomize/kustomize/v4
+		GOPROXY=$(GOPROXY) go build -tags=tools -o $(TOOLS_BIN_DIR)/kustomize sigs.k8s.io/kustomize/kustomize/v4 ; 
 
 $(PROTOC_GEN_GO): ## Build protoc-gen-go from tools folder.
 	cd $(TOOLS_MOD_DIR) && \
-		GOPROXY=$(GOPROXY) go build -tags=tools -o $(TOOLS_BIN_DIR)/protoc-gen-go google.golang.org/protobuf/cmd/protoc-gen-go
+		GOPROXY=$(GOPROXY) go build -tags=tools -o $(TOOLS_BIN_DIR)/protoc-gen-go google.golang.org/protobuf/cmd/protoc-gen-go ; 
 
 $(PROTOC_GEN_GO_GRPC): ## Build protoc-gen-go-grpc from tools folder.
 	cd $(TOOLS_MOD_DIR) && \
-		GOPROXY=$(GOPROXY) go build -tags=tools -o $(TOOLS_BIN_DIR)/protoc-gen-go-grpc google.golang.org/grpc/cmd/protoc-gen-go-grpc
+		GOPROXY=$(GOPROXY) go build -tags=tools -o $(TOOLS_BIN_DIR)/protoc-gen-go-grpc google.golang.org/grpc/cmd/protoc-gen-go-grpc ; 
 
 ## --------------------------------------
 ## Testing Binaries
@@ -262,19 +262,19 @@ shellcheck: $(SHELLCHECK)
 ## --------------------------------------
 .PHONY: build
 build:
-	GOPROXY=$(GOPROXY) CGO_ENABLED=0 GOOS=linux go build -a -ldflags $(LDFLAGS) -o _output/secrets-store-csi ./cmd/secrets-store-csi-driver
+	GOPROXY=$(GOPROXY) CGO_ENABLED=0 GOOS=linux go build -a -ldflags $(LDFLAGS) -o _output/secrets-store-csi ./cmd/secrets-store-csi-driver ; 
 
 .PHONY: build-e2e-provider
 build-e2e-provider:
-	cd test/e2eprovider && GOPROXY=$(GOPROXY) CGO_ENABLED=0 GOOS=linux go build -a -tags "e2e" -o e2e-provider
+	cd test/e2eprovider && GOPROXY=$(GOPROXY) CGO_ENABLED=0 GOOS=linux go build -a -tags "e2e" -o e2e-provider ; 
 
 .PHONY: build-windows
 build-windows:
-	GOPROXY=$(GOPROXY) CGO_ENABLED=0 GOOS=windows go build -a -ldflags $(LDFLAGS) -o _output/secrets-store-csi.exe ./cmd/secrets-store-csi-driver
+	GOPROXY=$(GOPROXY) CGO_ENABLED=0 GOOS=windows go build -a -ldflags $(LDFLAGS) -o _output/secrets-store-csi.exe ./cmd/secrets-store-csi-driver ; 
 
 .PHONY: build-darwin
 build-darwin:
-	GOPROXY=$(GOPROXY) CGO_ENABLED=0 GOOS=darwin go build -a -ldflags $(LDFLAGS) -o _output/secrets-store-csi ./cmd/secrets-store-csi-driver
+	GOPROXY=$(GOPROXY) CGO_ENABLED=0 GOOS=darwin go build -a -ldflags $(LDFLAGS) -o _output/secrets-store-csi ./cmd/secrets-store-csi-driver ; 
 
 .PHONY: clean-crds
 clean-crds:
