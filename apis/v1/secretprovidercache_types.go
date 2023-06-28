@@ -30,16 +30,16 @@ type SecretProviderCacheSpec struct {
 
 	// Foo is an example field of SecretProviderCache. Edit secretprovidercache_types.go to remove/update
 	Foo 					string 						`json:"foo,omitempty"`
-	PodName                 string                      `json:"podName,omitempty"`
-	SecretProviderClassName string                      `json:"secretProviderClassName,omitempty"`
-	ServiceAccount 			string 						`json:"serviceAccount,omitempty"`
-	ServiceAccountId 		string 						`json:"serviceAccountId,omitempty"`
 }
 
 // SecretProviderCacheStatus defines the observed state of SecretProviderCache
 type SecretProviderCacheStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+	PodName                 string                      `json:"podName,omitempty"`
+	SecretProviderClassName string                      `json:"secretProviderClassName,omitempty"`
+	ServiceAccount 			string 						`json:"serviceAccount,omitempty"`
+	ServiceAccountId 		string 						`json:"serviceAccountId,omitempty"`
 }
 
 // +kubebuilder:object:root=true

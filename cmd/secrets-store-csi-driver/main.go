@@ -151,6 +151,15 @@ func mainErr() error {
 						},
 					),
 				},
+				// this enables filtered watch of secretproviderclasspodstatuses based on the internal node label
+				// internal.secrets-store.csi.k8s.io/node-name=<node name> added by csi driver
+				&secretsstorev1.SecretProviderCache{}: {
+					Label: labels.SelectorFromSet(
+						labels.Set{
+							secretsstorev1.InternalNodeLabel: *nodeID,
+						},
+					),
+				},
 				// this enables filtered watch of secrets based on the label (eg. secrets-store.csi.k8s.io/managed=true)
 				// added to the secrets created by the CSI driver
 				&corev1.Secret{}: {
@@ -178,7 +187,16 @@ func mainErr() error {
 		return err
 	}
 	// +kubebuilder:scaffold:builder
-
+	reconcilerCache, err := controllers.NewSecretProviderCacheReconciler(mgr, *nodeID)
+	if err != nil {
+		klog.ErrorS(err, "failed to create secret provider CACHE reconciler")
+		return err
+	}
+	if err = reconcilerCache.SetupWithManager(mgr); err != nil {
+		klog.ErrorS(err, "failed to create CACHE controller")
+		return err
+	}
+	// +kubebuilder:scaffold:builder
 	// create provider clients
 	providerPaths := strings.Split(strings.TrimSpace(*additionalProviderPaths), ",")
 	providerPaths = append(providerPaths, *providerVolumePath)
@@ -201,6 +219,7 @@ func mainErr() error {
 
 	go func() {
 		reconciler.RunPatcher(ctx)
+		reconcilerCache.RunPatcher(ctx)
 	}()
 
 	// token request client
