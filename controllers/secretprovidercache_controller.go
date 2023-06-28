@@ -55,7 +55,7 @@ type SecretProviderCacheReconciler struct {
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.6.4/pkg/reconcile
-func (r *SecretProviderCacheReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
+func (r *SecretProviderCacheReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	_ = context.Background()
 	_ = r.Log.WithValues("secretprovidercache", req.NamespacedName)
 
@@ -68,7 +68,6 @@ func (r *SecretProviderCacheReconciler) Reconcile(req ctrl.Request) (ctrl.Result
 func (r *SecretProviderCacheReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&secretsstorev1.SecretProviderCache{}).
-		WithEventFilter(r.belongsToNodePredicate()).
 		Complete(r)
 }
 
