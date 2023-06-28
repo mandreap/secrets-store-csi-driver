@@ -92,8 +92,7 @@ func getSecretProviderItem(ctx context.Context, c client.Client, name, namespace
 // if the secret provider cache already exists, it updates the status and owner references.
 func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, reader client.Reader, podname, namespace, podUID, spcName, targetPath, nodeID string, mounted bool, objects map[string]string) error {
 	//var o []secretsstorev1.SecretProviderClassObject
-	
-	
+
 	var err error
 	spcpsName := podname + "-" + namespace + "-" + spcName + "-cache" 
 	klog.Infof("SecretProviderCache: creating secret provider cache for pod %s/%s - %s", namespace, podname, spcpsName)
@@ -139,6 +138,7 @@ func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, rea
 	// the secret provider class pod status with the name already exists, update it
 	if err = c.Get(ctx, client.ObjectKey{Name: spcpsName, Namespace: namespace}, spcps); err != nil {
 		if !apierrors.IsNotFound(err) {
+			klog.InfoS("CACHE error:", "err", err) 
 			return err
 		}
 		// the secret provider class pod status could be missing in the cache because it was labeled with a different node
@@ -195,7 +195,6 @@ func createOrUpdateSecretProviderClassPodStatus(ctx context.Context, c client.Cl
 	})
 
 	if err = c.Create(ctx, spcPodStatus); err == nil || !apierrors.IsAlreadyExists(err) {
-		klog.InfoS("CACHE error:", "err", err) 
 		return err
 	}
 	klog.InfoS("secret provider class pod status already exists, updating it", "spcps", klog.ObjectRef{Name: spcPodStatus.Name, Namespace: spcPodStatus.Namespace})

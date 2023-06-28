@@ -197,8 +197,8 @@ func (r *SecretProviderCacheReconciler) ListOptionsLabelSelector() client.ListOp
 	})
 }
 
-//+kubebuilder:rbac:groups=secrets-store.csi.x-k8s.io.secrets-store.csi.k8s.io,resources=secretprovidercaches,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=secrets-store.csi.x-k8s.io.secrets-store.csi.k8s.io,resources=secretprovidercaches/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=secrets-store.csi.x-k8s.io,resources=secretprovidercaches,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=secrets-store.csi.x-k8s.io,resources=secretprovidercaches/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=secrets-store.csi.x-k8s.io,resources=secretproviderclasses,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
@@ -225,7 +225,7 @@ func (r *SecretProviderCacheReconciler) Reconcile(ctx context.Context, req ctrl.
 			klog.InfoS("cache reconcile complete", "spc", req.NamespacedName.String())
 			return ctrl.Result{}, nil
 		}
-		klog.ErrorS(err, "failed to get spc pod status", "spc", req.NamespacedName.String())
+		klog.ErrorS(err, "failed to get CACHE pod status", "spc", req.NamespacedName.String())
 		return ctrl.Result{}, err
 	}
 

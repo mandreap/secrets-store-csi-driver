@@ -219,6 +219,10 @@ func mainErr() error {
 
 	go func() {
 		reconciler.RunPatcher(ctx)
+	}()
+
+	go func() {
+		klog.Info("Starting CACHE patcher")
 		reconcilerCache.RunPatcher(ctx)
 	}()
 
