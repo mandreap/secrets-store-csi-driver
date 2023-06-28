@@ -92,9 +92,11 @@ func getSecretProviderItem(ctx context.Context, c client.Client, name, namespace
 // if the secret provider cache already exists, it updates the status and owner references.
 func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, reader client.Reader, podname, namespace, podUID, spcName, targetPath, nodeID string, mounted bool, objects map[string]string) error {
 	//var o []secretsstorev1.SecretProviderClassObject
+	
+	
 	var err error
 	spcpsName := podname + "-" + namespace + "-" + spcName + "-cache" 
-
+	klog.Infof("SecretProviderCache: creating secret provider cache for pod %s/%s - %s", namespace, podname, spcpsName)
 	/*
 	for k, v := range objects {
 		o = append(o, secretsstorev1.SecretProviderClassObject{ID: k, Version: v})
@@ -114,6 +116,7 @@ func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, rea
 			ServiceAccountId: "123",
 		},
 	}
+	klog.InfoS("SecretProviderCache: populated", "spcCache", spcCache)
 
 	// Set owner reference to the pod as the mapping between secret provider class pod status and
 	// pod is 1 to 1. When pod is deleted, the spc pod status will automatically be garbage collected
@@ -129,6 +132,7 @@ func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, rea
 	if err = c.Create(ctx, spcCache); err == nil || !apierrors.IsAlreadyExists(err) {
 		return err
 	}
+	klog.Info("SecretProviderCache: created")
 	klog.InfoS("secret provider cache already exists, updating it", "spcps", klog.ObjectRef{Name: spcCache.Name, Namespace: spcCache.Namespace})
 
 	spcps := &secretsstorev1.SecretProviderCache{}
@@ -191,6 +195,7 @@ func createOrUpdateSecretProviderClassPodStatus(ctx context.Context, c client.Cl
 	})
 
 	if err = c.Create(ctx, spcPodStatus); err == nil || !apierrors.IsAlreadyExists(err) {
+		klog.InfoS("CACHE error:", "err", err) 
 		return err
 	}
 	klog.InfoS("secret provider class pod status already exists, updating it", "spcps", klog.ObjectRef{Name: spcPodStatus.Name, Namespace: spcPodStatus.Namespace})
