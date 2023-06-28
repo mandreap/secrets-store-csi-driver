@@ -29,7 +29,11 @@ type SecretProviderCacheSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Foo is an example field of SecretProviderCache. Edit secretprovidercache_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	Foo 					string 						`json:"foo,omitempty"`
+	PodName                 string                      `json:"podName,omitempty"`
+	SecretProviderClassName string                      `json:"secretProviderClassName,omitempty"`
+	ServiceAccount 			string 						`json:"serviceAccount,omitempty"`
+	ServiceAccountId 		string 						`json:"serviceAccountId,omitempty"`
 }
 
 // SecretProviderCacheStatus defines the observed state of SecretProviderCache
