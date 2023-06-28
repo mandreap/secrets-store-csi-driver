@@ -25,7 +25,7 @@ TOOLS_BIN_DIR="${TOOLS_DIR}/bin"
 
 pushd "${SCRIPT_ROOT}"
 # install the generators if they are not already present
-for GENERATOR in client-gen lister-gen informer-gen register-gen; do
+for GENERATOR in deepcopy-gen client-gen lister-gen informer-gen register-gen; do
   cd "${TOOLS_DIR}" && go build -tags=tools -o "${TOOLS_BIN_DIR}"/${GENERATOR} k8s.io/code-generator/cmd/${GENERATOR}
 done
 popd
