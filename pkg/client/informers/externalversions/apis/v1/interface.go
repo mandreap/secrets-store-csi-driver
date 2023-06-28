@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The Kubernetes Authors.
+Copyright 2022 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,6 +24,8 @@ import (
 
 // Interface provides access to all the informers in this group version.
 type Interface interface {
+	// SecretProviderCaches returns a SecretProviderCacheInformer.
+	SecretProviderCaches() SecretProviderCacheInformer
 	// SecretProviderClasses returns a SecretProviderClassInformer.
 	SecretProviderClasses() SecretProviderClassInformer
 	// SecretProviderClassPodStatuses returns a SecretProviderClassPodStatusInformer.
@@ -39,6 +41,11 @@ type version struct {
 // New returns a new Interface.
 func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakListOptions internalinterfaces.TweakListOptionsFunc) Interface {
 	return &version{factory: f, namespace: namespace, tweakListOptions: tweakListOptions}
+}
+
+// SecretProviderCaches returns a SecretProviderCacheInformer.
+func (v *version) SecretProviderCaches() SecretProviderCacheInformer {
+	return &secretProviderCacheInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
 // SecretProviderClasses returns a SecretProviderClassInformer.

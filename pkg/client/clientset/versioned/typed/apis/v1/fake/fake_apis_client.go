@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The Kubernetes Authors.
+Copyright 2022 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,6 +26,10 @@ import (
 
 type FakeSecretsstoreV1 struct {
 	*testing.Fake
+}
+
+func (c *FakeSecretsstoreV1) SecretProviderCaches(namespace string) v1.SecretProviderCacheInterface {
+	return &FakeSecretProviderCaches{c, namespace}
 }
 
 func (c *FakeSecretsstoreV1) SecretProviderClasses(namespace string) v1.SecretProviderClassInterface {

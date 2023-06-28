@@ -32,59 +32,59 @@ import (
 	v1 "sigs.k8s.io/secrets-store-csi-driver/pkg/client/listers/apis/v1"
 )
 
-// SecretProviderClassPodStatusInformer provides access to a shared informer and lister for
-// SecretProviderClassPodStatuses.
-type SecretProviderClassPodStatusInformer interface {
+// SecretProviderCacheInformer provides access to a shared informer and lister for
+// SecretProviderCaches.
+type SecretProviderCacheInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1.SecretProviderClassPodStatusLister
+	Lister() v1.SecretProviderCacheLister
 }
 
-type secretProviderClassPodStatusInformer struct {
+type secretProviderCacheInformer struct {
 	factory          internalinterfaces.SharedInformerFactory
 	tweakListOptions internalinterfaces.TweakListOptionsFunc
 	namespace        string
 }
 
-// NewSecretProviderClassPodStatusInformer constructs a new informer for SecretProviderClassPodStatus type.
+// NewSecretProviderCacheInformer constructs a new informer for SecretProviderCache type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewSecretProviderClassPodStatusInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
-	return NewFilteredSecretProviderClassPodStatusInformer(client, namespace, resyncPeriod, indexers, nil)
+func NewSecretProviderCacheInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
+	return NewFilteredSecretProviderCacheInformer(client, namespace, resyncPeriod, indexers, nil)
 }
 
-// NewFilteredSecretProviderClassPodStatusInformer constructs a new informer for SecretProviderClassPodStatus type.
+// NewFilteredSecretProviderCacheInformer constructs a new informer for SecretProviderCache type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewFilteredSecretProviderClassPodStatusInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
+func NewFilteredSecretProviderCacheInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
 	return cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.SecretsstoreV1().SecretProviderClassPodStatuses(namespace).List(context.TODO(), options)
+				return client.SecretsstoreV1().SecretProviderCaches(namespace).List(context.TODO(), options)
 			},
 			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.SecretsstoreV1().SecretProviderClassPodStatuses(namespace).Watch(context.TODO(), options)
+				return client.SecretsstoreV1().SecretProviderCaches(namespace).Watch(context.TODO(), options)
 			},
 		},
-		&apisv1.SecretProviderClassPodStatus{},
+		&apisv1.SecretProviderCache{},
 		resyncPeriod,
 		indexers,
 	)
 }
 
-func (f *secretProviderClassPodStatusInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewFilteredSecretProviderClassPodStatusInformer(client, f.namespace, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
+func (f *secretProviderCacheInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
+	return NewFilteredSecretProviderCacheInformer(client, f.namespace, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
 }
 
-func (f *secretProviderClassPodStatusInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&apisv1.SecretProviderClassPodStatus{}, f.defaultInformer)
+func (f *secretProviderCacheInformer) Informer() cache.SharedIndexInformer {
+	return f.factory.InformerFor(&apisv1.SecretProviderCache{}, f.defaultInformer)
 }
 
-func (f *secretProviderClassPodStatusInformer) Lister() v1.SecretProviderClassPodStatusLister {
-	return v1.NewSecretProviderClassPodStatusLister(f.Informer().GetIndexer())
+func (f *secretProviderCacheInformer) Lister() v1.SecretProviderCacheLister {
+	return v1.NewSecretProviderCacheLister(f.Informer().GetIndexer())
 }
