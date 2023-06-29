@@ -90,36 +90,29 @@ func getSecretProviderItem(ctx context.Context, c client.Client, name, namespace
 
 // createOrUpdateSecretProviderCache creates secret provider cache if it doesn't exist.
 // if the secret provider cache already exists, it updates the status and owner references.
-func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, reader client.Reader, podname, namespace, podUID, spcName, targetPath, nodeID string, mounted bool, objects map[string]string) error {
-	//var o []secretsstorev1.SecretProviderClassObject
-
+func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, reader client.Reader, serviceAccountName, podname, namespace, podUID, spcName, targetPath, nodeID string, mounted bool, objects map[string]string) error {
 	var err error
-	spcpsName := podname + "-" + namespace + "-" + spcName + "-cache" 
-	klog.Infof("SecretProviderCache: creating secret provider cache for pod %s/%s - %s", namespace, podname, spcpsName)
-	/*
-	for k, v := range objects {
-		o = append(o, secretsstorev1.SecretProviderClassObject{ID: k, Version: v})
-	}
-	o = spcpsutil.OrderSecretProviderClassObjectByID(o)
-	*/
-	spcCache := &secretsstorev1.SecretProviderCache{
+	spCacheName := podname + "-" + namespace + "-" + spcName + "-cache" 
+	klog.InfoS("SecretProviderCache - creating secret provider cache\n", "namespace", namespace, "pod", podname,"spc", spcName, "spCacheName", spCacheName)
+
+	spCache := &secretsstorev1.SecretProviderCache{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      spcpsName,
+			Name:      spCacheName,
 			Namespace: namespace,
 			Labels:    map[string]string{secretsstorev1.InternalNodeLabel: nodeID},
 		},
 		Status: secretsstorev1.SecretProviderCacheStatus{
 			PodName:                 podname,
 			SecretProviderClassName: spcName,
-			ServiceAccount: "test",
+			ServiceAccount: serviceAccountName,
 			ServiceAccountId: "123",
 		},
 	}
-	klog.InfoS("SecretProviderCache: populated", "spcCache", spcCache)
+	klog.InfoS("SecretProviderCache: populated", "spCache", spCache)
 
 	// Set owner reference to the pod as the mapping between secret provider class pod status and
-	// pod is 1 to 1. When pod is deleted, the spc pod status will automatically be garbage collected
-	spcCache.SetOwnerReferences([]metav1.OwnerReference{
+	// pod is 1 to 1. When pod is deleted, the spc will automatically be garbage collected
+	spCache.SetOwnerReferences([]metav1.OwnerReference{
 		{
 			APIVersion: "v1",
 			Kind:       "Pod",
@@ -128,30 +121,30 @@ func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, rea
 		},
 	})
 
-	if err = c.Create(ctx, spcCache); err == nil || !apierrors.IsAlreadyExists(err) {
+	if err = c.Create(ctx, spCache); err == nil || !apierrors.IsAlreadyExists(err) {
 		return err
 	}
-	klog.Info("SecretProviderCache: created")
-	klog.InfoS("secret provider cache already exists, updating it", "spcps", klog.ObjectRef{Name: spcCache.Name, Namespace: spcCache.Namespace})
+	klog.Info("SecretProviderCache: successfully created")
+	klog.InfoS("secret provider cache already exists, updating it", "spcps", klog.ObjectRef{Name: spCache.Name, Namespace: spCache.Namespace})
 
 	spcps := &secretsstorev1.SecretProviderCache{}
-	// the secret provider class pod status with the name already exists, update it
-	if err = c.Get(ctx, client.ObjectKey{Name: spcpsName, Namespace: namespace}, spcps); err != nil {
+	// the secret provider cache with the name already exists, update it
+	if err = c.Get(ctx, client.ObjectKey{Name: spCacheName, Namespace: namespace}, spcps); err != nil {
 		if !apierrors.IsNotFound(err) {
-			klog.InfoS("CACHE error:", "err", err) 
+			klog.InfoS("CACHE Get error:", "err", err) 
 			return err
 		}
 		// the secret provider class pod status could be missing in the cache because it was labeled with a different node
 		// label, so we need to get it from the API server
-		if err = reader.Get(ctx, client.ObjectKey{Name: spcpsName, Namespace: namespace}, spcps); err != nil {
+		if err = reader.Get(ctx, client.ObjectKey{Name: spCacheName, Namespace: namespace}, spcps); err != nil {
 			return err
 		}
 	}
 
 	// update the labels of the secret provider class pod status to match the node label
 	spcps.Labels[secretsstorev1.InternalNodeLabel] = nodeID
-	spcps.Status = spcCache.Status
-	spcps.OwnerReferences = spcCache.OwnerReferences
+	spcps.Status = spCache.Status
+	spcps.OwnerReferences = spCache.OwnerReferences
 
 	return c.Update(ctx, spcps)
 }

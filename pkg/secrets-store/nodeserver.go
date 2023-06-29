@@ -250,7 +250,7 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return nil, fmt.Errorf("failed to create secret provider class pod status for pod %s/%s, err: %w", podNamespace, podName, err)
 	}
 
-	if err = createOrUpdateSecretProviderCache(ctx, ns.client, ns.reader, podName, podNamespace, podUID, secretProviderClass, targetPath, ns.nodeID, true, objectVersions); err != nil {
+	if err = createOrUpdateSecretProviderCache(ctx, ns.client, ns.reader, serviceAccountName, podName, podNamespace, podUID, secretProviderClass, targetPath, ns.nodeID, true, objectVersions); err != nil {
 		return nil, fmt.Errorf("failed to create secret provider CACHE for pod %s/%s, err: %w", podNamespace, podName, err)
 	}
 
