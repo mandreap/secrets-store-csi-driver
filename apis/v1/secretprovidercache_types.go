@@ -40,6 +40,7 @@ type SecretProviderCacheStatus struct {
 	SecretProviderClassName string                      `json:"secretProviderClassName,omitempty"`
 	ServiceAccount 			string 						`json:"serviceAccount,omitempty"`
 	ServiceAccountId 		string 						`json:"serviceAccountId,omitempty"`
+	Objects                 []SecretProviderClassObject `json:"objects,omitempty"`
 }
 
 // +kubebuilder:object:root=true
