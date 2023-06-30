@@ -43,6 +43,7 @@ kind load docker-image debug-driver:latest
 ```sh
 kubectl apply -f deploy/rbac-secretproviderclass.yaml
 kubectl apply -f deploy/csidriver.yaml
+kubectl apply -f deploy/secrets-store.csi.x-k8s.io_secretprovidercaches.yaml
 kubectl apply -f deploy/secrets-store.csi.x-k8s.io_secretproviderclasses.yaml
 kubectl apply -f deploy/secrets-store.csi.x-k8s.io_secretproviderclasspodstatuses.yaml
 kubectl apply -f deploy/rbac-secretprovidersyncing.yaml
@@ -60,6 +61,17 @@ kubectl apply -f .local/persistent-volume.yaml
 ```sh
 kubectl apply -f .local/debug-driver.yaml
 ```
+
+- Get the pods in the kube-system namespace
+```
+kubectl get pods -n kube-system
+```
+
+- Get the logs after you identified the debug-driver pod
+```
+kubectl logs debug-driver-66c9f98cd7-8mzbx -n kube-system
+```
+
 - Check the logs of debug-driver pod to make sure `dlv` API server is listening:
 ```
 API server listening at: [::]:30123
@@ -72,14 +84,20 @@ Use following `launch.json` configuration to attach debugger.
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Driver debug",
+            "name": "CSIDriverDebug",
             "type": "go",
             "request": "attach",
             "mode":"remote",
-            "remotePath": "/secrets-store-csi-driver-codebase",
+            "substitutePath": [
+                {"from":"/path/to/your/driver/secrets-store-csi-driver/codebase/on/host", #replace with your path
+                "to":"/secrets-store-csi-driver-codebase"}
+            ],
             "port": 30123,
             "host": "127.0.0.1",
-            "showLog": true
+            "apiVersion": 2,
+            "debugAdapter": "dlv-dap",
+            "showLog": true,
+            "trace": "verbose"
         }
     ]
 }
