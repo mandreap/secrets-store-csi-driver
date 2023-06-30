@@ -7,5 +7,21 @@ nodes:
     hostPort: 30123 # port on your host machine to communicate with the delve server
     protocol: TCP
   extraMounts:
-    - hostPath: # /path/to/your/driver/secrets-store-csi-driver/codebase/on/host
+    - hostPath: /home/andreea/csi_fork/secrets-store-csi-driver
       containerPath: /secrets-store-csi-driver-codebase # path to the project folder inside cluster
+    - hostPath: ${SERVICE_ACCOUNT_KEY_FILE}
+      containerPath: /etc/kubernetes/pki/sa.pub
+    - hostPath: ${SERVICE_ACCOUNT_SIGNING_KEY_FILE}
+      containerPath: /etc/kubernetes/pki/sa.key
+  kubeadmConfigPatches:
+    - |
+      kind: ClusterConfiguration
+      apiServer:
+        extraArgs:
+          service-account-issuer: ${SERVICE_ACCOUNT_ISSUER}
+          service-account-key-file: /etc/kubernetes/pki/sa.pub
+          service-account-signing-key-file: /etc/kubernetes/pki/sa.key
+      controllerManager:
+        extraArgs:
+          service-account-private-key-file: /etc/kubernetes/pki/sa.key
+  image: kindest/node:v1.27.1@sha256:b7d12ed662b873bd8510879c1846e87c7e676a79fefc93e17b2a52989d3ff42b
