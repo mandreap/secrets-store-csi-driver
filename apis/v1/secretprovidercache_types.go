@@ -23,28 +23,21 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// SecretProviderCacheSpec defines the desired state of SecretProviderCache
-type SecretProviderCacheSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
-	// Foo is an example field of SecretProviderCache. Edit secretprovidercache_types.go to remove/update
-	Foo 					string 						`json:"foo,omitempty"`
-}
-
 // SecretProviderCacheStatus defines the observed state of SecretProviderCache
 type SecretProviderCacheStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 	PodName                 string                      `json:"podName,omitempty"`
+	ServiceAccountName      string                      `json:"serviceAccountName,omitempty"`
 	SecretProviderClassName string                      `json:"secretProviderClassName,omitempty"`
-	ServiceAccount 			string 						`json:"serviceAccount,omitempty"`
-	ServiceAccountId 		string 						`json:"serviceAccountId,omitempty"`
+	Mounted                 bool                        `json:"mounted,omitempty"`
+	TargetPath              string                      `json:"targetPath,omitempty"`
 	Objects                 []SecretProviderClassObject `json:"objects,omitempty"`
+	SecretObjects 			[]*SecretObject   			`json:"secretObjects,omitempty"`
 }
 
 // +kubebuilder:object:root=true
-// +kubebuilder:subresource:status
+// +kubebuilder:storageversion
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
@@ -53,7 +46,6 @@ type SecretProviderCache struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   SecretProviderCacheSpec   `json:"spec,omitempty"`
 	Status SecretProviderCacheStatus `json:"status,omitempty"`
 }
 
