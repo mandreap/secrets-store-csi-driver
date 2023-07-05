@@ -186,7 +186,6 @@ func mainErr() error {
 		klog.ErrorS(err, "failed to create controller")
 		return err
 	}
-	// +kubebuilder:scaffold:builder
 	reconcilerCache, err := controllers.NewSecretProviderCacheReconciler(mgr, *nodeID)
 	if err != nil {
 		klog.ErrorS(err, "failed to create secret provider CACHE reconciler")
@@ -218,11 +217,12 @@ func mainErr() error {
 	}()
 
 	go func() {
+		klog.Info("Main - starting SPCS patcher")
 		reconciler.RunPatcher(ctx)
 	}()
 
 	go func() {
-		klog.Info("Starting CACHE patcher")
+		klog.Info("Main - starting CACHE patcher")
 		reconcilerCache.RunPatcher(ctx)
 	}()
 

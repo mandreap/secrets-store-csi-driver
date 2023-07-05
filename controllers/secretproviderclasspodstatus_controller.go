@@ -104,6 +104,7 @@ func (r *SecretProviderClassPodStatusReconciler) Patcher(ctx context.Context) er
 	klog.V(10).Info("patcher started")
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
+	klog.InfoS("PATCHER SPCPSP context", "context", ctx)
 
 	spcPodStatusList := &secretsstorev1.SecretProviderClassPodStatusList{}
 	spcMap := make(map[string]secretsstorev1.SecretProviderClass)
@@ -116,6 +117,7 @@ func (r *SecretProviderClassPodStatusReconciler) Patcher(ctx context.Context) er
 
 	spcPodStatuses := spcPodStatusList.Items
 	for i := range spcPodStatuses {
+		klog.InfoS("SPCPSP context", "i", i, "spcPodStatuses[i]", spcPodStatuses[i])
 		spcName := spcPodStatuses[i].Status.SecretProviderClassName
 		spc := &secretsstorev1.SecretProviderClass{}
 		namespace := spcPodStatuses[i].Namespace
@@ -128,6 +130,7 @@ func (r *SecretProviderClassPodStatusReconciler) Patcher(ctx context.Context) er
 			}
 			spcMap[namespace+"/"+spcName] = *spc
 		}
+		klog.InfoS("PodName from SPCPSP", "PodName", spcPodStatuses[i].Status.PodName)
 		// get the pod and check if the pod has a owner reference
 		pod := &corev1.Pod{}
 		err = r.reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: spcPodStatuses[i].Status.PodName}, pod)
@@ -219,18 +222,20 @@ func (r *SecretProviderClassPodStatusReconciler) Reconcile(ctx context.Context, 
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	klog.InfoS("reconcile started", "spcps", req.NamespacedName.String())
-
+	klog.InfoS("SPCPSR reconcile started", "spcps", req.NamespacedName.String())
+	klog.InfoS("SPCPSR context", "context", ctx)
+	klog.InfoS("SPCPSR request", "req", req)
 	spcPodStatus := &secretsstorev1.SecretProviderClassPodStatus{}
 	if err := r.reader.Get(ctx, req.NamespacedName, spcPodStatus); err != nil {
 		if apierrors.IsNotFound(err) {
-			klog.InfoS("reconcile complete", "spcps", req.NamespacedName.String())
+			klog.InfoS("SPCPSR reconcile complete", "spcps", req.NamespacedName.String())
 			return ctrl.Result{}, nil
 		}
 		klog.ErrorS(err, "failed to get spc pod status", "spcps", req.NamespacedName.String())
 		return ctrl.Result{}, err
 	}
 
+	klog.InfoS("SPCPSR reconcile spcpsr", "spcPodStatus", spcPodStatus)
 	// Obtain the full pod metadata. An object reference is needed for sending
 	// events and the UID is helpful for validating the SPCPS TargetPath.
 	pod := &corev1.Pod{}

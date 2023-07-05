@@ -246,11 +246,14 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	// SPCPS is created the first time after the pod mount is complete. Update is required in scenarios where
 	// the pod with same name (pods created by statefulsets) is moved to a different node and the old SPCPS
 	// has not yet been garbage collected.
+	klog.Info("NodePublishVolume: Creating SPCPS for pod")
 	if err = createOrUpdateSecretProviderClassPodStatus(ctx, ns.client, ns.reader, podName, podNamespace, podUID, secretProviderClass, targetPath, ns.nodeID, true, objectVersions); err != nil {
 		return nil, fmt.Errorf("failed to create secret provider class pod status for pod %s/%s, err: %w", podNamespace, podName, err)
 	}
 
+	klog.Info("NodePublishVolume: Creating CACHE for pod")
 	if err = createOrUpdateSecretProviderCache(ctx, ns.client, ns.reader, serviceAccountName, podName, podNamespace, podUID, secretProviderClass, targetPath, ns.nodeID, true, objectVersions); err != nil {
+		klog.Infof("failed to create secret provider CACHE for pod %s/%s, err: %v", podNamespace, podName, err)
 		return nil, fmt.Errorf("failed to create secret provider CACHE for pod %s/%s, err: %w", podNamespace, podName, err)
 	}
 

@@ -23,17 +23,22 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// SecretProviderCacheStatus defines the observed state of SecretProviderCache
-type SecretProviderCacheStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+type SPCaPodSpcSecretsMapping struct {
 	PodName                 string                      `json:"podName,omitempty"`
-	ServiceAccountName      string                      `json:"serviceAccountName,omitempty"`
 	SecretProviderClassName string                      `json:"secretProviderClassName,omitempty"`
 	Mounted                 bool                        `json:"mounted,omitempty"`
 	TargetPath              string                      `json:"targetPath,omitempty"`
 	Objects                 []SecretProviderClassObject `json:"objects,omitempty"`
 	SecretObjects 			[]*SecretObject   			`json:"secretObjects,omitempty"`
+}
+
+
+// SecretProviderCacheStatus defines the observed state of SecretProviderCache
+type SecretProviderCacheStatus struct {
+	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
+	// Important: Run "make" to regenerate code after modifying this file
+	ServiceAccountName      	string						`json:"serviceAccountName,omitempty"`
+	SPCaPodSpcSecretsMapping 	[]*SPCaPodSpcSecretsMapping `json:"byPod,omitempty"`
 }
 
 // +kubebuilder:object:root=true
