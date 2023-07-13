@@ -171,6 +171,7 @@ func (r *SecretProviderCacheReconciler) Patcher(ctx context.Context) error {
 				klog.Info("CACHEP replacing mapping secrets", "mapping.SecretObjects", mapping.SecretObjects)
 				needsUpdate = true
 			}
+
 			// TODO: take the real secret data here instead of the synced secret key and value
 			for _, secret := range mapping.SecretObjects {
 				for _, s := range secrets {
