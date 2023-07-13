@@ -859,7 +859,7 @@ def remove_none_images() -> int:
         removed_count = 0
         for image_id in image_ids:
             try:
-                subprocess.run(["docker", "rmi", image_id], check=True)
+                subprocess.run(["docker", "rmi", image_id], check=True, capture_output=True, text=True)
                 removed_count += 1
             except subprocess.CalledProcessError as e:
                 error_message = str(e.stderr).lower()
@@ -869,7 +869,7 @@ def remove_none_images() -> int:
                     raise
         
         print(f"Removed {removed_count} image(s) tagged as <none>.")
-    except Exception as e:
+    except subprocess.CalledProcessError as e:
         print("An error occurred while removing images:")
         print(str(e))
         raise
