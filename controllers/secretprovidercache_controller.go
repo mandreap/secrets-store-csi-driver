@@ -25,8 +25,6 @@ import (
 
 	secretsstorev1 "sigs.k8s.io/secrets-store-csi-driver/apis/v1"
 	"sigs.k8s.io/secrets-store-csi-driver/pkg/client/clientset/versioned/scheme"
-	"sigs.k8s.io/secrets-store-csi-driver/pkg/util/fileutil"
-	"sigs.k8s.io/secrets-store-csi-driver/pkg/util/k8sutil"
 	"sigs.k8s.io/secrets-store-csi-driver/pkg/util/secretutil"
 
 	corev1 "k8s.io/api/core/v1"
@@ -34,7 +32,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apiruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	clientcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/record"
@@ -85,17 +82,52 @@ func (r *SecretProviderCacheReconciler) RunPatcher(ctx context.Context) {
 			return
 		case <-ticker.C:
 			if err := r.Patcher(ctx); err != nil {
-				klog.ErrorS(err, "failed to patch secret owner ref")
+				klog.ErrorS(err, "failed to patch secrets")
 			}
 		}
 	}
+}
+
+func getSecretObjectsFromPodAndSPC(pod *corev1.Pod, spc *secretsstorev1.SecretProviderClass) []secretsstorev1.SecretObject {
+	var podSpcSecretsList []secretsstorev1.SecretObject
+	if spc == nil || pod == nil {
+		klog.Info("secret provider class or pod is nil")
+		return podSpcSecretsList
+	}
+
+	var secretList []secretsstorev1.SecretObject
+	// get the secret objects from the pod
+	for _, v := range pod.Spec.Volumes {
+		if v.CSI != nil {
+			secretList = append(secretList, secretsstorev1.SecretObject{
+				SecretName: v.Name,
+			})
+		}
+	}
+
+	// get the secret objects from the secret provider class
+	for _, v := range spc.Spec.SecretObjects {
+		for _, s := range secretList {
+			if s.SecretName == v.SecretName {
+				s.Annotations = v.Annotations
+				s.Labels = v.Labels
+				klog.InfoS("secret list object", "s.Data", s.Data, "s.Type", s.Type)
+				klog.InfoS("spc.Spec.SecretObjects object", "v.Data", v.Data, "v.Type", v.Type)
+				s.Data = v.Data
+				s.Type = v.Type
+			}
+			podSpcSecretsList = append(podSpcSecretsList, s)
+		}
+	}
+
+	klog.InfoS("podSpcSecretsList", "podSpcSecretsList", podSpcSecretsList)
+	return podSpcSecretsList
 }
 
 func (r *SecretProviderCacheReconciler) Patcher(ctx context.Context) error {
 	klog.V(10).Info("patcher started")
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
-	klog.InfoS("PATCHER CACHEP context", "context", ctx)
 
 	spcCacheList := &secretsstorev1.SecretProviderCacheList{}
 	spcMap := make(map[string]secretsstorev1.SecretProviderClass)
@@ -103,14 +135,14 @@ func (r *SecretProviderCacheReconciler) Patcher(ctx context.Context) error {
 	// get a list of all spc pod status that belong to the node
 	err := r.reader.List(ctx, spcCacheList, r.ListOptionsLabelSelector())
 	if err != nil {
-		return fmt.Errorf("failed to list secret provider class pod status, err: %w", err)
+		return fmt.Errorf("failed to list secret provider cache, err: %w", err)
 	}
 
 	spcCaches := spcCacheList.Items
 	for i, spcCache := range spcCaches {
-		klog.InfoS("CACHEP context", "i", i, "spcCaches[i]", spcCaches[i])
+		needsUpdate := false
 		for j, mapping := range spcCache.Status.SPCaPodSpcSecretsMapping {
-			klog.InfoS("\n\tCACHEP context mapping", "j", j, "spcCaches[i].Status.SPCaPodSpcSecretsMapping", mapping)
+			klog.InfoS("CACHEP context mapping", "j", j, "spcCaches[i].Status.SPCaPodSpcSecretsMapping", mapping)
 			spcName := mapping.SecretProviderClassName
 			spc := &secretsstorev1.SecretProviderClass{}
 			namespace := spcCaches[i].Namespace
@@ -123,78 +155,43 @@ func (r *SecretProviderCacheReconciler) Patcher(ctx context.Context) error {
 				}
 				spcMap[namespace+"/"+spcName] = *spc
 			}
-			klog.InfoS("PodName from CACHEP", "PodName", mapping.PodName)
 			// get the pod and check if the pod has a owner reference
 			pod := &corev1.Pod{}
 			err = r.reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: mapping.PodName}, pod)
 			if err != nil {
 				return fmt.Errorf("failed to fetch pod during patching, err: %w", err)
 			}
-		}
-		
-/*	
-		var ownerRefs []metav1.OwnerReference
-		for _, ownerRef := range pod.GetOwnerReferences() {
-			ownerRefs = append(ownerRefs, metav1.OwnerReference{
-				APIVersion: ownerRef.APIVersion,
-				Kind:       ownerRef.Kind,
-				UID:        ownerRef.UID,
-				Name:       ownerRef.Name,
-			})
-		}
-		// If a pod has no owner references, then it's a static pod and
-		// doesn't belong to a replicaset. In this case, use the spc as
-		// owner reference just like we do it today
-		if len(ownerRefs) == 0 {
-			// Create a new owner ref.
-			gvk, err := apiutil.GVKForObject(&spcCaches[i], r.scheme)
-			if err != nil {
-				return err
+			
+			secrets := getSecretObjectsFromPodAndSPC(pod, spc)
+			if len(secrets) > 0 && len(mapping.SecretObjects) == 0 {
+				for _, secret := range secrets {
+					mapping.SecretObjects = append(mapping.SecretObjects, &secret)
+					klog.Info("CACHEP adding mapping secrets", "secret", secret)
+				}
+				klog.Info("CACHEP replacing mapping secrets", "mapping.SecretObjects", mapping.SecretObjects)
+				needsUpdate = true
 			}
-			ref := metav1.OwnerReference{
-				APIVersion: gvk.GroupVersion().String(),
-				Kind:       gvk.Kind,
-				UID:        spcCaches[i].GetUID(),
-				Name:       spcCaches[i].GetName(),
-			}
-			ownerRefs = append(ownerRefs, ref)
-		}
 
-		for _, secret := range spc.Spec.SecretObjects {
-			key := types.NamespacedName{Name: secret.SecretName, Namespace: namespace}
-			val, exists := secretOwnerMap[key]
-			if exists {
-				secretOwnerMap[key] = append(val, ownerRefs...)
-			} else {
-				secretOwnerMap[key] = ownerRefs
+			for _, secret := range mapping.SecretObjects {
+				for _, s := range secrets {
+					klog.Info("CACHEP updating secret", "secret", secret, "s", s)
+					if secret.SecretName == s.SecretName {
+						needsUpdate = true
+						secret.Annotations = s.Annotations
+						secret.Labels = s.Labels
+						secret.Data = s.Data
+						secret.Type = s.Type
+					}
+				}
 			}
 		}
-	}
-	
-	for secret, owners := range secretOwnerMap {
-		patchFn := func() (bool, error) {
-			if err := r.patchSecretWithOwnerRef(ctx, secret.Name, secret.Namespace, owners...); err != nil {
-				if !apierrors.IsConflict(err) || !apierrors.IsTimeout(err) {
-					klog.ErrorS(err, "failed to set owner ref for secret", "secret", klog.ObjectRef{Namespace: secret.Namespace, Name: secret.Name})
-				}
-				// syncSecret.enabled is set to false by default in the helm chart for installing the driver in v0.0.23+
-				// that would result in a forbidden error, so generate a warning that can be helpful for debugging
-				if apierrors.IsForbidden(err) {
-					klog.Warning(SyncSecretForbiddenWarning)
-				}
-				return false, nil
+		if needsUpdate {
+			klog.Info("CACHEP updating spc", "spcCache", spcCache)
+			patch := client.MergeFromWithOptions(spcCache.DeepCopy(), client.MergeFromWithOptimisticLock{})
+			if err := r.writer.Patch(ctx, &spcCache, patch); err != nil {
+				return fmt.Errorf("failed to patch spc, err: %w", err)
 			}
-			return true, nil
 		}
-		if err := wait.ExponentialBackoff(wait.Backoff{
-			Steps:    5,
-			Duration: 1 * time.Millisecond,
-			Factor:   1.0,
-			Jitter:   0.1,
-		}, patchFn); err != nil {
-			return err
-		}
-	}*/
 	}
 
 	klog.V(10).Info("patcher completed")
@@ -228,7 +225,7 @@ func (r *SecretProviderCacheReconciler) Reconcile(ctx context.Context, req ctrl.
 			klog.InfoS("CACHE reconcile complete", "spc", req.NamespacedName.String())
 			return ctrl.Result{}, nil
 		}
-		klog.ErrorS(err, "failed to get spc", "spc", req.NamespacedName.String())
+		klog.ErrorS(err, "failed to get spcCache", "spcCache", req.NamespacedName.String())
 		return ctrl.Result{}, err
 	}
 
@@ -244,6 +241,9 @@ func (r *SecretProviderCacheReconciler) Reconcile(ctx context.Context, req ctrl.
 			}
 			return ctrl.Result{}, err
 		}
+
+		klog.InfoS("CACHE reconcile pod", "pod", pod.Name)
+
 		// skip reconcile if the pod is being terminated
 		// or the pod is in succeeded state (for jobs that complete aren't gc yet)
 		// or the pod is in a failed state (all containers get terminated)
@@ -267,98 +267,26 @@ func (r *SecretProviderCacheReconciler) Reconcile(ctx context.Context, req ctrl.
 			return ctrl.Result{}, nil
 		}
 
-		// determine which pod volume this is associated with
-		podVol := k8sutil.SPCVolume(pod, spc.Name)
-		if podVol == nil {
-			return ctrl.Result{}, fmt.Errorf("failed to find secret provider class pod status volume for pod %s/%s", req.Namespace, mapping.PodName)
-		}
-
-		// validate TargetPath
-		if fileutil.GetPodUIDFromTargetPath(mapping.TargetPath) != string(pod.UID) {
-			return ctrl.Result{}, fmt.Errorf("secret provider class pod status targetPath did not match pod UID for pod %s/%s", req.Namespace, mapping.PodName)
-		}
-		if fileutil.GetVolumeNameFromTargetPath(mapping.TargetPath) != podVol.Name {
-			return ctrl.Result{}, fmt.Errorf("secret provider class pod status volume name did not match pod Volume for pod %s/%s", req.Namespace, mapping.PodName)
-		}
-
-		files, err := fileutil.GetMountedFiles(mapping.TargetPath)
-		if err != nil {
-			r.generateEvent(pod, corev1.EventTypeWarning, secretCreationFailedReason, fmt.Sprintf("failed to get mounted files, err: %+v", err))
-			klog.ErrorS(err, "failed to get mounted files", "spc", klog.KObj(spc), "pod", klog.KObj(pod), "spcps", klog.KObj(spcCache))
-			return ctrl.Result{RequeueAfter: 10 * time.Second}, err
-		}
 		errs := make([]error, 0)
 		for _, secretObj := range spc.Spec.SecretObjects {
 			secretName := strings.TrimSpace(secretObj.SecretName)
 
-			if err = secretutil.ValidateSecretObject(*secretObj); err != nil {
+			if err := secretutil.ValidateSecretObject(*secretObj); err != nil {
 				klog.ErrorS(err, "failed to validate secret object in spc", "spc", klog.KObj(spc), "pod", klog.KObj(pod), "spcps", klog.KObj(spcCache))
 				errs = append(errs, fmt.Errorf("failed to validate secret object in spc %s/%s, err: %w", spc.Namespace, spc.Name, err))
 				continue
 			}
-			exists, err := r.secretExists(ctx, secretName, req.Namespace)
+			klog.InfoS("Checking secret exists:", "secretName", secretName, "mapping.SecretObject", mapping.SecretObjects)
+			exists, err := r.secretExists(ctx, secretName, mapping.SecretObjects)
 			if err != nil {
-				klog.ErrorS(err, "failed to check if secret exists", "secret", klog.ObjectRef{Namespace: req.Namespace, Name: secretName}, "spc", klog.KObj(spc), "pod", klog.KObj(pod), "spcps", klog.KObj(spcCache))
-				// syncSecret.enabled is set to false by default in the helm chart for installing the driver in v0.0.23+
-				// that would result in a forbidden error, so generate a warning that can be helpful for debugging
-				if apierrors.IsForbidden(err) {
-					klog.Warning(SyncSecretForbiddenWarning)
-				}
+				klog.ErrorS(err, "failed to check if secret exists in the cache", "secret", secretName, "spc", klog.KObj(spc), "pod", klog.KObj(pod), "spcps", klog.KObj(spcCache))
 				errs = append(errs, fmt.Errorf("failed to check if secret %s exists, err: %w", secretName, err))
 				continue
 			}
-
-			var funcs []func() (bool, error)
-
+			
 			if !exists {
-				secretType := secretutil.GetSecretType(strings.TrimSpace(secretObj.Type))
-
-				var datamap map[string][]byte
-				if datamap, err = secretutil.GetSecretData(secretObj.Data, secretType, files); err != nil {
-					r.generateEvent(pod, corev1.EventTypeWarning, secretCreationFailedReason, fmt.Sprintf("failed to get data in spc %s/%s for secret %s, err: %+v", req.Namespace, spcName, secretName, err))
-					klog.ErrorS(err, "failed to get data in spc for secret", "spc", klog.KObj(spc), "pod", klog.KObj(pod), "secret", klog.ObjectRef{Namespace: req.Namespace, Name: secretName}, "spcps", klog.KObj(spcCache))
-					errs = append(errs, fmt.Errorf("failed to get data in spc %s/%s for secret %s, err: %w", req.Namespace, spcName, secretName, err))
-					continue
-				}
-
-				labelsMap := make(map[string]string)
-				if secretObj.Labels != nil {
-					labelsMap = secretObj.Labels
-				}
-				annotationsMap := make(map[string]string)
-				if secretObj.Annotations != nil {
-					annotationsMap = secretObj.Annotations
-				}
-				// Set secrets-store.csi.k8s.io/managed=true label on the secret that's created and managed
-				// by the secrets-store-csi-driver. This label will be used to perform a filtered list watch
-				// only on secrets created and managed by the driver
-				labelsMap[SecretManagedLabel] = "true"
-
-				createFn := func() (bool, error) {
-					if err := r.createK8sSecret(ctx, secretName, req.Namespace, datamap, labelsMap, annotationsMap, secretType); err != nil {
-						klog.ErrorS(err, "failed to create Kubernetes secret", "spc", klog.KObj(spc), "pod", klog.KObj(pod), "secret", klog.ObjectRef{Namespace: req.Namespace, Name: secretName}, "spcps", klog.KObj(spcCache))
-						// syncSecret.enabled is set to false by default in the helm chart for installing the driver in v0.0.23+
-						// that would result in a forbidden error, so generate a warning that can be helpful for debugging
-						if apierrors.IsForbidden(err) {
-							klog.Warning(SyncSecretForbiddenWarning)
-						}
-						return false, nil
-					}
-					return true, nil
-				}
-				funcs = append(funcs, createFn)
-			}
-
-			for _, f := range funcs {
-				if err := wait.ExponentialBackoff(wait.Backoff{
-					Steps:    5,
-					Duration: 1 * time.Millisecond,
-					Factor:   1.0,
-					Jitter:   0.1,
-				}, f); err != nil {
-					r.generateEvent(pod, corev1.EventTypeWarning, secretCreationFailedReason, err.Error())
-					return ctrl.Result{RequeueAfter: 5 * time.Second}, err
-				}
+				klog.InfoS("secret doesn't exist in the cache, creating", "secret", secretName, "spc", klog.KObj(spc), "pod", klog.KObj(pod), "spcps", klog.KObj(spcCache))	
+				mapping.SecretObjects = append(mapping.SecretObjects, secretObj)
 			}
 		}
 
@@ -368,10 +296,11 @@ func (r *SecretProviderCacheReconciler) Reconcile(ctx context.Context, req ctrl.
 		klog.InfoS("reconcile complete", "spc", klog.KObj(spc), "pod", klog.KObj(pod), "spcps", klog.KObj(spcCache))
 	}
 	
+
 	// requeue the spc pod status again after 5mins to check if secret and ownerRef exists
 	// and haven't been modified. If secret doesn't exist, then this requeue will ensure it's
 	// created in the next reconcile and the owner ref patched again
-	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
+	return ctrl.Result{}, nil
 }
 
 func (r *SecretProviderCacheReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -412,30 +341,6 @@ func (r *SecretProviderCacheReconciler) processIfBelongsToNode(objMeta metav1.Ob
 	return true
 }
 
-// createK8sSecret creates K8s secret with data from mounted files
-// If a secret with the same name already exists in the namespace of the pod, the error is nil.
-func (r *SecretProviderCacheReconciler) createK8sSecret(ctx context.Context, name, namespace string, datamap map[string][]byte, labelsmap map[string]string, annotationsmap map[string]string, secretType corev1.SecretType) error {
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace:   namespace,
-			Name:        name,
-			Labels:      labelsmap,
-			Annotations: annotationsmap,
-		},
-		Type: secretType,
-		Data: datamap,
-	}
-
-	err := r.writer.Create(ctx, secret)
-	if err == nil {
-		klog.InfoS("successfully created Kubernetes secret", "secret", klog.ObjectRef{Namespace: namespace, Name: name})
-		return nil
-	}
-	if apierrors.IsAlreadyExists(err) {
-		return nil
-	}
-	return err
-}
 
 // TODO:: this should be patched with SA and secret-provider class
 // Once the SA disappears, presumably the secret-provider classes federated with this SA will
@@ -484,23 +389,23 @@ func (r *SecretProviderCacheReconciler) patchSecretWithOwnerRef(ctx context.Cont
 }
 
 
-// TODO: this should look into the CRD and check if we already have a sp:secret association 
-// and patch the secret accordingly
-// secretExists checks if the secret with name and namespace already exists
-func (r *SecretProviderCacheReconciler) secretExists(ctx context.Context, name, namespace string) (bool, error) {
-	o := &corev1.Secret{}
-	secretKey := types.NamespacedName{
-		Namespace: namespace,
-		Name:      name,
-	}
-	err := r.Client.Get(ctx, secretKey, o)
-	if err == nil {
-		return true, nil
-	}
-	if apierrors.IsNotFound(err) {
+// Look into the CRD and check if we already have a sp:secret mapping and patch the secret accordingly
+// secretExists checks if the secret with name already exists
+func (r *SecretProviderCacheReconciler) secretExists(ctx context.Context, name string, listOfSecrets []*secretsstorev1.SecretObject) (bool, error) {
+	klog.InfoS("Check if secret exists", "secretName", name)
+	
+	if len(listOfSecrets) == 0 {
 		return false, nil
 	}
-	return false, err
+
+	for _, secret := range listOfSecrets {
+		if secret.SecretName == name {
+			klog.InfoS("Check if name matches and they do", "name", name, "secretName:", secret.SecretName)
+			return true, nil
+		}
+	}
+	klog.InfoS("Couldn't find secret", "secret name:", name)
+	return false, nil
 }
 
 // generateEvent generates an event

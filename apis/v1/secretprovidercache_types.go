@@ -26,12 +26,9 @@ import (
 type SPCaPodSpcSecretsMapping struct {
 	PodName                 string                      `json:"podName,omitempty"`
 	SecretProviderClassName string                      `json:"secretProviderClassName,omitempty"`
-	Mounted                 bool                        `json:"mounted,omitempty"`
-	TargetPath              string                      `json:"targetPath,omitempty"`
 	Objects                 []SecretProviderClassObject `json:"objects,omitempty"`
 	SecretObjects 			[]*SecretObject   			`json:"secretObjects,omitempty"`
 }
-
 
 // SecretProviderCacheStatus defines the observed state of SecretProviderCache
 type SecretProviderCacheStatus struct {

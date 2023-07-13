@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-
 	secretsstorev1 "sigs.k8s.io/secrets-store-csi-driver/apis/v1"
 	"sigs.k8s.io/secrets-store-csi-driver/pkg/util/runtimeutil"
 	"sigs.k8s.io/secrets-store-csi-driver/pkg/util/spcpsutil"
@@ -90,7 +89,7 @@ func getSecretProviderItem(ctx context.Context, c client.Client, name, namespace
 
 // createOrUpdateSecretProviderCache creates secret provider cache if it doesn't exist.
 // if the secret provider cache already exists, it updates the status and owner references.
-func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, reader client.Reader, serviceAccountName, podname, namespace, podUID, spcName, targetPath, nodeID string, mounted bool, objects map[string]string) error {
+func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, reader client.Reader, serviceAccountName, podName, namespace, podUID, spcName, targetPath, nodeID string, mounted bool, secrets, objects map[string]string) error {
 	var o []secretsstorev1.SecretProviderClassObject
 	var err error
 	spcpsName := serviceAccountName + "-" + namespace + "-cache"
@@ -110,17 +109,16 @@ func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, rea
 			ServiceAccountName: 	 serviceAccountName,
 			SPCaPodSpcSecretsMapping: []*secretsstorev1.SPCaPodSpcSecretsMapping{
 				{
-					PodName: podname,
+					PodName: podName,
 					SecretProviderClassName: spcName,
-					Mounted: mounted,
-					TargetPath: targetPath,
 					Objects: o,
+					SecretObjects: []*secretsstorev1.SecretObject{},
 				},
 			},
 		},
 	}
 
-	// TODO: this should be set to the service account
+	// TODO: this should be set to the service account/namespace
 	// Set owner reference to the pod as the mapping between secret provider class pod status and
 	// pod is 1 to 1. When pod is deleted, the secret provider class will automatically be garbage collected
 	/*spCache.SetOwnerReferences([]metav1.OwnerReference{
@@ -136,6 +134,7 @@ func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, rea
 		return err
 	}
 	klog.Info("SecretProviderCache: successfully created")
+
 	klog.InfoS("SecretProviderCache already exists, updating it", "spCache", klog.ObjectRef{Name: spCache.Name, Namespace: spCache.Namespace})
 
 	spCacheUpdate := &secretsstorev1.SecretProviderCache{}
@@ -153,17 +152,23 @@ func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, rea
 		}
 	}
 	klog.InfoS("SecretProviderCache: after getting", "spCacheUpdate", spCacheUpdate)
-	newMapping := &secretsstorev1.SPCaPodSpcSecretsMapping{
-					PodName: podname,
-					SecretProviderClassName: spcName,
-					Mounted: mounted,
-					TargetPath: targetPath,
-					Objects: o,
-	}
-	spCacheUpdate.Status.SPCaPodSpcSecretsMapping = append(spCacheUpdate.Status.SPCaPodSpcSecretsMapping, newMapping)
 	// update the labels of the secret provider class pod status to match the node label
 	spCacheUpdate.Labels[secretsstorev1.InternalNodeLabel] = nodeID
-	//spCacheUpdate.Status = spCache.Status
+	for _, spCaPodSpcSecretsMapping := range spCacheUpdate.Status.SPCaPodSpcSecretsMapping {
+		if spCaPodSpcSecretsMapping.PodName == podName && spCaPodSpcSecretsMapping.SecretProviderClassName == spcName {
+			spCaPodSpcSecretsMapping.Objects = o
+			continue
+		}
+
+		spCacheUpdate.Status.SPCaPodSpcSecretsMapping = append(spCacheUpdate.Status.SPCaPodSpcSecretsMapping, &secretsstorev1.SPCaPodSpcSecretsMapping{
+			PodName: podName,
+			SecretProviderClassName: spcName,
+			Objects: o,
+			SecretObjects: spCaPodSpcSecretsMapping.SecretObjects,
+		})
+	}
+
+	spCacheUpdate.Status.ServiceAccountName = spCache.Status.ServiceAccountName
 	//spCacheUpdate.OwnerReferences = spCache.OwnerReferences
 
 	return c.Update(ctx, spCacheUpdate)
@@ -250,6 +255,10 @@ func getParametersFromSPC(spc *secretsstorev1.SecretProviderClass) (map[string]s
 		return nil, fmt.Errorf("parameters not set in %s/%s", spc.Namespace, spc.Name)
 	}
 	return spc.Spec.Parameters, nil
+}
+
+func getSecrets(spc *secretsstorev1.SecretProviderClass) ([]*secretsstorev1.SecretObject,error){
+	return spc.Spec.SecretObjects, nil
 }
 
 // isMockProvider returns true if the provider is mock

@@ -252,7 +252,7 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 
 	klog.Info("NodePublishVolume: Creating CACHE for pod")
-	if err = createOrUpdateSecretProviderCache(ctx, ns.client, ns.reader, serviceAccountName, podName, podNamespace, podUID, secretProviderClass, targetPath, ns.nodeID, true, objectVersions); err != nil {
+	if err = createOrUpdateSecretProviderCache(ctx, ns.client, ns.reader, serviceAccountName, podName, podNamespace, podUID, secretProviderClass, targetPath, ns.nodeID, true, objectVersions, secrets); err != nil {
 		klog.Infof("failed to create secret provider CACHE for pod %s/%s, err: %v", podNamespace, podName, err)
 		return nil, fmt.Errorf("failed to create secret provider CACHE for pod %s/%s, err: %w", podNamespace, podName, err)
 	}
