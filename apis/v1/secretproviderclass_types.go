@@ -72,6 +72,7 @@ type SecretProviderClassStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:storageversion
 // +genclient
+// +kubebuilder:subresource:status
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // SecretProviderClass is the Schema for the secretproviderclasses API
