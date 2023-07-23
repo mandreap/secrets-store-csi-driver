@@ -433,7 +433,7 @@ func (r *Reconciler) reconcile(ctx context.Context, spcps *secretsstorev1.Secret
 		spcps.Status.Objects = spcpsutil.OrderSecretProviderClassObjectByID(ov)
 
 		updateFn := func() (bool, error) {
-			err = r.updateSecretProviderClassPodStatus(ctx, spcps)
+			err = r.updateSecretProviderClassPodStatusStatus(ctx, spcps)
 			updated := true
 			if err != nil {
 				klog.ErrorS(err, "failed to update latest versions in spc pod status", "spcps", klog.KObj(spcps), "controller", "rotation")
@@ -520,10 +520,10 @@ func (r *Reconciler) reconcile(ctx context.Context, spcps *secretsstorev1.Secret
 	return nil
 }
 
-// updateSecretProviderClassPodStatus updates secret provider class pod status
-func (r *Reconciler) updateSecretProviderClassPodStatus(ctx context.Context, spcPodStatus *secretsstorev1.SecretProviderClassPodStatus) error {
+// updateSecretProviderClassPodStatusStatus updates secret provider class pod status
+func (r *Reconciler) updateSecretProviderClassPodStatusStatus(ctx context.Context, spcPodStatus *secretsstorev1.SecretProviderClassPodStatus) error {
 	// update the secret provider class pod status
-	_, err := r.crdClient.SecretsstoreV1().SecretProviderClassPodStatuses(spcPodStatus.Namespace).Update(ctx, spcPodStatus, metav1.UpdateOptions{})
+	_, err := r.crdClient.SecretsstoreV1().SecretProviderClassPodStatuses(spcPodStatus.Namespace).UpdateStatus(ctx, spcPodStatus, metav1.UpdateOptions{})
 	return err
 }
 
