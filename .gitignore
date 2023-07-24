@@ -1,3 +1,9 @@
+jwks.json
+sa.key
+sa.pub
+pyconfig_script.py
+openid-configuration.json
+
 cmd/secrets-store-csi-driver/secrets-store-csi-driver
 
 # OSX leaves these everywhere on SMB shares
