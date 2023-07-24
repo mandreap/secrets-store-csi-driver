@@ -23,7 +23,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - secrets-store.csi.x-k8s.io
+  - secrets-store.csi.k8s.io
   resources:
   - secretprovidercaches
   verbs:
@@ -35,7 +35,13 @@ rules:
   - update
   - watch
 - apiGroups:
-  - secrets-store.csi.x-k8s.io
+  - secrets-store.csi.k8s.io
+  resources:
+  - secretprovidercaches/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - secrets-store.csi.k8s.io
   resources:
   - secretprovidercaches/status
   verbs:
@@ -46,6 +52,22 @@ rules:
   - secrets-store.csi.x-k8s.io
   resources:
   - secretproviderclasses
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - secrets-store.csi.x-k8s.io
+  resources:
+  - secretproviderclasses/status
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - secrets-store.csi.x-k8s.io
+  resources:
+  - secretproviderclasspodstatus
   verbs:
   - get
   - list

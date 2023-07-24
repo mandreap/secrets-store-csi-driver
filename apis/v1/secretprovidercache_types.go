@@ -22,26 +22,48 @@ import (
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-// TODO: move these from status into spec
-// TODO: define new SecretObjects to store the actual secret data
-type SPCaPodSpcSecretsMapping struct {
-	PodName                 string                      `json:"podName,omitempty"`
-	SecretProviderClassName string                      `json:"secretProviderClassName,omitempty"`
-	Objects                 []SecretProviderClassObject `json:"objects,omitempty"`
-	SecretObjects 			[]*SecretObject   			`json:"secretObjects,omitempty"`
+
+type CacheSecret struct {
+	SecretName       string            `json:"secretName,omitempty"`
+	SecretType       string            `json:"secretType,omitempty"`
+	Labels           map[string]string `json:"labels,omitempty"`
+	Annotations      map[string]string `json:"annotations,omitempty"`
+	SecretObjectData map[string][]byte `json:"secretObjectData,omitempty"`
+}
+
+type CacheSecretProviderClassSecrets struct {
+	SecretProviderClassName string         `json:"secretProviderClassName,omitempty"`
+	CacheSecrets            []*CacheSecret `json:"secrets,omitempty"`
+}
+
+type CachePodSecrets struct {
+	PodName                    string                             `json:"podName,omitempty"`
+	CacheSecretsSpcMapping     []*CacheSecretProviderClassSecrets `json:"cacheSecretsSpcMapping,omitempty"`
+	ServicePrincipalSecretName string                             `json:"servicePrincipalSecretName,omitempty"`
+}
+
+// SecretProviderCacheSpec defines the desired state of SecretProviderCache
+type SecretProviderCacheSpec struct {
+	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
+	// Important: Run "make" to regenerate code after modifying this file
+
+	// Foo is an example field of SecretProviderCache. Edit secretprovidercache_types.go to remove/update
+	Foo string `json:"foo,omitempty"`
 }
 
 // SecretProviderCacheStatus defines the observed state of SecretProviderCache
 type SecretProviderCacheStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	ServiceAccountName      	string						`json:"serviceAccountName,omitempty"`
-	SPCaPodSpcSecretsMapping 	[]*SPCaPodSpcSecretsMapping `json:"byPod,omitempty"`
+	PodSecrets         []*CachePodSecrets `json:"podSecrets,omitempty"`
+	ServiceAccountName string             `json:"serviceAccountName,omitempty"`
+	Namespace          string             `json:"namespace,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:storageversion
 // +genclient
+// +kubebuilder:subresource:status
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // SecretProviderCache is the Schema for the secretprovidercaches API
@@ -49,6 +71,7 @@ type SecretProviderCache struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
+	Spec   SecretProviderCacheSpec   `json:"spec,omitempty"`
 	Status SecretProviderCacheStatus `json:"status,omitempty"`
 }
 

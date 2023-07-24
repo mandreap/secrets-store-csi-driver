@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
 	secretsstorev1 "sigs.k8s.io/secrets-store-csi-driver/apis/v1"
 	"sigs.k8s.io/secrets-store-csi-driver/pkg/util/runtimeutil"
 	"sigs.k8s.io/secrets-store-csi-driver/pkg/util/spcpsutil"
@@ -90,88 +91,8 @@ func getSecretProviderItem(ctx context.Context, c client.Client, name, namespace
 // createOrUpdateSecretProviderCache creates secret provider cache if it doesn't exist.
 // if the secret provider cache already exists, it updates the status and owner references.
 func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, reader client.Reader, serviceAccountName, podName, namespace, podUID, spcName, targetPath, nodeID string, mounted bool, secrets, objects map[string]string) error {
-	var o []secretsstorev1.SecretProviderClassObject
-	var err error
-	spcpsName := serviceAccountName + "-" + namespace + "-cache"
 
-	for k, v := range objects {
-		o = append(o, secretsstorev1.SecretProviderClassObject{ID: k, Version: v})
-	}
-	o = spcpsutil.OrderSecretProviderClassObjectByID(o)
-
-	spCache := &secretsstorev1.SecretProviderCache{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      spcpsName,
-			Namespace: namespace,
-			Labels:    map[string]string{secretsstorev1.InternalNodeLabel: nodeID},
-		},
-		Status: secretsstorev1.SecretProviderCacheStatus{
-			ServiceAccountName: 	 serviceAccountName,
-			SPCaPodSpcSecretsMapping: []*secretsstorev1.SPCaPodSpcSecretsMapping{
-				{
-					PodName: podName,
-					SecretProviderClassName: spcName,
-					Objects: o,
-					SecretObjects: []*secretsstorev1.SecretObject{},
-				},
-			},
-		},
-	}
-
-	// TODO: this should be set to the service account/namespace
-	// Set owner reference to the pod as the mapping between secret provider class pod status and
-	// pod is 1 to 1. When pod is deleted, the secret provider class will automatically be garbage collected
-	/*spCache.SetOwnerReferences([]metav1.OwnerReference{
-		{
-			APIVersion: "v1",
-			Kind:       "Pod",
-			Name:       podname,
-			UID:        types.UID(podUID),
-		},
-	})*/ 
-
-	if err = c.Create(ctx, spCache); err == nil || !apierrors.IsAlreadyExists(err) {
-		return err
-	}
-	klog.Info("SecretProviderCache: successfully created")
-
-	klog.InfoS("SecretProviderCache already exists, updating it", "spCache", klog.ObjectRef{Name: spCache.Name, Namespace: spCache.Namespace})
-
-	spCacheUpdate := &secretsstorev1.SecretProviderCache{}
-	klog.InfoS("SecretProviderCache: before getting", "spCacheUpdate", spCacheUpdate)
-
-	// the secret provider class pod status with the name already exists, update it
-	if err = c.Get(ctx, client.ObjectKey{Name: spcpsName, Namespace: namespace}, spCacheUpdate); err != nil {
-		if !apierrors.IsNotFound(err) {
-			return err
-		}
-		// the secret provider class pod status could be missing in the cache because it was labeled with a different node
-		// label, so we need to get it from the API server
-		if err = reader.Get(ctx, client.ObjectKey{Name: spcpsName, Namespace: namespace}, spCacheUpdate); err != nil {
-			return err
-		}
-	}
-	klog.InfoS("SecretProviderCache: after getting", "spCacheUpdate", spCacheUpdate)
-	// update the labels of the secret provider class pod status to match the node label
-	spCacheUpdate.Labels[secretsstorev1.InternalNodeLabel] = nodeID
-	for _, spCaPodSpcSecretsMapping := range spCacheUpdate.Status.SPCaPodSpcSecretsMapping {
-		if spCaPodSpcSecretsMapping.PodName == podName && spCaPodSpcSecretsMapping.SecretProviderClassName == spcName {
-			spCaPodSpcSecretsMapping.Objects = o
-			continue
-		}
-
-		spCacheUpdate.Status.SPCaPodSpcSecretsMapping = append(spCacheUpdate.Status.SPCaPodSpcSecretsMapping, &secretsstorev1.SPCaPodSpcSecretsMapping{
-			PodName: podName,
-			SecretProviderClassName: spcName,
-			Objects: o,
-			SecretObjects: spCaPodSpcSecretsMapping.SecretObjects,
-		})
-	}
-
-	spCacheUpdate.Status.ServiceAccountName = spCache.Status.ServiceAccountName
-	//spCacheUpdate.OwnerReferences = spCache.OwnerReferences
-
-	return c.Update(ctx, spCacheUpdate)
+	return nil
 }
 
 // createOrUpdateSecretProviderClassPodStatus creates secret provider class pod status if not exists.
@@ -257,7 +178,7 @@ func getParametersFromSPC(spc *secretsstorev1.SecretProviderClass) (map[string]s
 	return spc.Spec.Parameters, nil
 }
 
-func getSecrets(spc *secretsstorev1.SecretProviderClass) ([]*secretsstorev1.SecretObject,error){
+func getSecrets(spc *secretsstorev1.SecretProviderClass) ([]*secretsstorev1.SecretObject, error) {
 	return spc.Spec.SecretObjects, nil
 }
 
