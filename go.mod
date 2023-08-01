@@ -28,6 +28,12 @@ require (
 require (
 	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
+	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b // indirect
+	github.com/llparse/controller-gen v0.0.0-20180131011002-7a38c4658cb4 // indirect
+	golang.org/x/mod v0.9.0 // indirect
+	golang.org/x/tools v0.7.0 // indirect
+	k8s.io/code-generator v0.26.4 // indirect
+	k8s.io/gengo v0.0.0-20220902162205-c0856e24416d // indirect
 	k8s.io/kube-openapi v0.0.0-20221012153701-172d655c2280 // indirect
 )
 

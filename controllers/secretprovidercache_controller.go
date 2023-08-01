@@ -20,11 +20,13 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"time"
 
 	secretsstorev1 "sigs.k8s.io/secrets-store-csi-driver/apis/v1"
 	"sigs.k8s.io/secrets-store-csi-driver/pkg/client/clientset/versioned/scheme"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apiruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
@@ -74,12 +76,38 @@ func (r *SecretProviderCacheReconciler) ListOptionsLabelSelector() client.ListOp
 	})
 }
 
-// +kubebuilder:rbac:groups=secrets-store.csi.k8s.io,resources=secretprovidercaches,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=secrets-store.csi.k8s.io,resources=secretprovidercaches/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=secrets-store.csi.k8s.io,resources=secretprovidercaches/finalizers,verbs=update
+/*
+func (r *SecretProviderCacheReconciler) RunPatcher(ctx context.Context) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := r.Patcher(ctx); err != nil {
+				klog.ErrorS(err, "failed to patch SecretProviderCache")
+			}
+		}
+	}
+}
+
+func (r *SecretProviderCacheReconciler) Patcher(ctx context.Context) error {
+	klog.V(10).Info("SecretProviderCacheReconciler patcher started")
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	klog.V(10).Info("SecretProviderCacheReconciler patcher completed")
+	return nil
+}*/
+
+// +kubebuilder:rbac:groups=secrets-store.csi.x-k8s.io,resources=secretprovidercaches,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=secrets-store.csi.x-k8s.io,resources=secretprovidercaches/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=secrets-store.csi.x-k8s.io,resources=secretproviderclasses,verbs=get;list;watch
 // +kubebuilder:rbac:groups=secrets-store.csi.x-k8s.io,resources=secretproviderclasses/status,verbs=get;list;watch
-// +kubebuilder:rbac:groups=secrets-store.csi.x-k8s.io,resources=secretproviderclasspodstatus,verbs=get;list;watch
+// +kubebuilder:rbac:groups=secrets-store.csi.x-k8s.io,resources=secretproviderclasspodstatuses,verbs=get;list;watch
+// +kubebuilder:rbac:groups=secrets-store.csi.x-k8s.io,resources=secretproviderclasspodstatuses/status,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups="storage.k8s.io",resources=csidrivers,verbs=get;list;watch,resourceNames=secrets-store.csi.k8s.io
@@ -89,11 +117,20 @@ func (r *SecretProviderCacheReconciler) Reconcile(ctx context.Context, req ctrl.
 	defer r.mutex.Unlock()
 
 	klog.InfoS("CACHE reconcile started", "spc", req.NamespacedName.String())
-	klog.InfoS("CACHE context", "context", ctx)
-	klog.InfoS("CACHE request", "req", req)
+	spCache := &secretsstorev1.SecretProviderCache{}
+	if err := r.reader.Get(ctx, req.NamespacedName, spCache); err != nil {
+		if apierrors.IsNotFound(err) {
+			klog.InfoS("reconcile complete", "spCache", req.NamespacedName.String())
+			return ctrl.Result{}, nil
+		}
+		klog.ErrorS(err, "failed to get secret provider cache", "spCache", req.NamespacedName.String())
+		return ctrl.Result{}, err
+	}
 
-	// Fetch the SecretProviderCache instance
-	return ctrl.Result{}, nil
+	klog.InfoS("CACHE reconcile:", "spCache", spCache)
+	klog.InfoS("CACHE reconcile completed", "spc", req.NamespacedName.String())
+
+	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 }
 
 func (r *SecretProviderCacheReconciler) SetupWithManager(mgr ctrl.Manager) error {
