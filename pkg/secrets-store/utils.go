@@ -106,13 +106,13 @@ func createOrUpdateSecretProviderClassPodStatus(ctx context.Context, c client.Cl
 			Namespace: namespace,
 			Labels:    map[string]string{secretsstorev1.InternalNodeLabel: nodeID},
 		},
-		Status: secretsstorev1.SecretProviderClassPodStatusStatus{
-			PodName:                 podname,
-			TargetPath:              targetPath,
-			Mounted:                 mounted,
-			SecretProviderClassName: spcName,
-			Objects:                 o,
-		},
+	}
+	var status = secretsstorev1.SecretProviderClassPodStatusStatus{
+		PodName:                 podname,
+		TargetPath:              targetPath,
+		Mounted:                 mounted,
+		SecretProviderClassName: spcName,
+		Objects:                 o,
 	}
 
 	// Set owner reference to the pod as the mapping between secret provider class pod status and
@@ -127,6 +127,12 @@ func createOrUpdateSecretProviderClassPodStatus(ctx context.Context, c client.Cl
 	})
 
 	if err = c.Create(ctx, spcPodStatus); err == nil || !apierrors.IsAlreadyExists(err) {
+		if err != nil {
+			return err
+		}
+		klog.InfoS("created secret provider class pod status", "spcPodStatus", klog.ObjectRef{Name: spcPodStatus.Name, Namespace: spcPodStatus.Namespace})
+		spcPodStatus.Status = status
+		err = c.Status().Update(ctx, spcPodStatus)
 		return err
 	}
 	klog.InfoS("secret provider class pod status already exists, updating it", "spcps", klog.ObjectRef{Name: spcPodStatus.Name, Namespace: spcPodStatus.Namespace})
@@ -146,8 +152,13 @@ func createOrUpdateSecretProviderClassPodStatus(ctx context.Context, c client.Cl
 
 	// update the labels of the secret provider class pod status to match the node label
 	spcps.Labels[secretsstorev1.InternalNodeLabel] = nodeID
-	spcps.Status = spcPodStatus.Status
 	spcps.OwnerReferences = spcPodStatus.OwnerReferences
+
+	spcps.Status = status
+	err = c.Status().Update(ctx, spcps)
+	if err != nil {
+		return err
+	}
 
 	return c.Update(ctx, spcps)
 }

@@ -51,7 +51,6 @@ const (
 	SecretManagedLabel         = "secrets-store.csi.k8s.io/managed"
 	SecretUsedLabel            = "secrets-store.csi.k8s.io/used"
 	secretCreationFailedReason = "FailedToCreateSecret"
-
 	SyncSecretForbiddenWarning = "The secret operation failed with forbidden error. If you installed the CSI driver using helm, ensure syncSecret.enabled=true is set."
 )
 
@@ -230,6 +229,11 @@ func (r *SecretProviderClassPodStatusReconciler) Reconcile(ctx context.Context, 
 		}
 		klog.ErrorS(err, "failed to get spc pod status", "spcps", req.NamespacedName.String())
 		return ctrl.Result{}, err
+	}
+
+	if len(spcPodStatus.Status.PodName) == 0 {
+		klog.InfoS("waiting for status to be populated", "spcps", req.NamespacedName.String())
+		return ctrl.Result{RequeueAfter: 5 * time.Millisecond}, nil
 	}
 
 	// Obtain the full pod metadata. An object reference is needed for sending
