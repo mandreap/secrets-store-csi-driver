@@ -28,6 +28,7 @@ import (
 	"sync"
 	"time"
 
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	internalerrors "sigs.k8s.io/secrets-store-csi-driver/pkg/errors"
 	"sigs.k8s.io/secrets-store-csi-driver/pkg/util/fileutil"
 	"sigs.k8s.io/secrets-store-csi-driver/pkg/util/runtimeutil"
@@ -224,7 +225,8 @@ func (p *PluginClientBuilder) HealthCheck(ctx context.Context, interval time.Dur
 
 // MountContent calls the client's Mount() RPC with helpers to format the
 // request and interpret the response.
-func MountContent(ctx context.Context, client v1alpha1.CSIDriverProviderClient, attributes, secrets, targetPath, permission string, oldObjectVersions map[string]string) (map[string]string, string, error) {
+func MountContent(ctx context.Context, client v1alpha1.CSIDriverProviderClient, attributes, secrets, targetPath, permission string, oldObjectVersions map[string]string,
+	c client.Client, reader client.Reader, serviceAccountName, podName, namespace, spcName, nodeID string) (map[string]string, string, error) {
 	var objVersions []*v1alpha1.ObjectVersion
 	for obj, version := range oldObjectVersions {
 		objVersions = append(objVersions, &v1alpha1.ObjectVersion{Id: obj, Version: version})
@@ -276,7 +278,18 @@ func MountContent(ctx context.Context, client v1alpha1.CSIDriverProviderClient, 
 		return nil, internalerrors.FileWriteError, err
 	}
 	klog.V(5).Info("mount response files written.")
-
+	klog.InfoS("iterating over mount response files")
+	listOfSecrets := resp.GetFiles()
+	for _, secret := range listOfSecrets {
+		klog.InfoS("mount response file", "content", string(secret.Contents))
+	}
+	// TODO: create the cache here once we managed to get all the secrets
+	klog.Info("NodePublishVolume: Creating CACHE for pod")
+	if err = createOrUpdateSecretProviderCache(ctx, c, reader, serviceAccountName, podName, namespace, spcName, nodeID, listOfSecrets); err != nil {
+		klog.Infof("failed to create secret provider CACHE for pod %s/%s, err: %v", namespace, podName, err)
+		message := fmt.Sprintf("failed to create secret provider CACHE for pod %s/%s, err: %v", namespace, podName, err)
+		return objectVersions, message, err
+	}
 	return objectVersions, "", nil
 }
 

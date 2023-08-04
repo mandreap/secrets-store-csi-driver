@@ -237,7 +237,9 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 	mounted = true
 	var objectVersions map[string]string
-	if objectVersions, errorReason, err = ns.mountSecretsStoreObjectContent(ctx, providerName, string(parametersStr), string(secretStr), targetPath, string(permissionStr), podName); err != nil {
+	// (ctx context.Context, client v1alpha1.CSIDriverProviderClient, attributes, secrets, targetPath, permission string, oldObjectVersions map[string]string,
+	// c client.Client, reader client.Reader, serviceAccountName, podName, namespace, spcName, nodeID string)
+	if objectVersions, errorReason, err = ns.mountSecretsStoreObjectContent(ctx, providerName, string(parametersStr), string(secretStr), targetPath, string(permissionStr), ns.client, ns.reader, serviceAccountName, podName, podNamespace, secretProviderClass, ns.nodeID); err != nil {
 		klog.ErrorS(err, "failed to mount secrets store object content", "pod", klog.ObjectRef{Namespace: podNamespace, Name: podName})
 		return nil, fmt.Errorf("failed to mount secrets store objects for pod %s/%s, err: %w", podNamespace, podName, err)
 	}
@@ -251,11 +253,12 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return nil, fmt.Errorf("failed to create secret provider class pod status for pod %s/%s, err: %w", podNamespace, podName, err)
 	}
 
-	klog.Info("NodePublishVolume: Creating CACHE for pod")
-	if err = createOrUpdateSecretProviderCache(ctx, ns.client, ns.reader, serviceAccountName, podName, podNamespace, podUID, secretProviderClass, targetPath, ns.nodeID, true, objectVersions, secrets); err != nil {
-		klog.Infof("failed to create secret provider CACHE for pod %s/%s, err: %v", podNamespace, podName, err)
-		return nil, fmt.Errorf("failed to create secret provider CACHE for pod %s/%s, err: %w", podNamespace, podName, err)
-	}
+	/*
+		klog.Info("NodePublishVolume: Creating CACHE for pod")
+		if err = createOrUpdateSecretProviderCache(ctx, ns.client, ns.reader, serviceAccountName, podName, podNamespace, podUID, secretProviderClass, targetPath, ns.nodeID, true, objectVersions, secrets); err != nil {
+			klog.Infof("failed to create secret provider CACHE for pod %s/%s, err: %v", podNamespace, podName, err)
+			return nil, fmt.Errorf("failed to create secret provider CACHE for pod %s/%s, err: %w", podNamespace, podName, err)
+		}*/
 
 	klog.InfoS("node publish volume complete", "targetPath", targetPath, "pod", klog.ObjectRef{Namespace: podNamespace, Name: podName}, "time", time.Since(startTime))
 	return &csi.NodePublishVolumeResponse{}, nil
@@ -341,7 +344,7 @@ func (ns *nodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
 
-func (ns *nodeServer) mountSecretsStoreObjectContent(ctx context.Context, providerName, attributes, secrets, targetPath, permission, podName string) (map[string]string, string, error) {
+func (ns *nodeServer) mountSecretsStoreObjectContent(ctx context.Context, providerName, attributes, secrets, targetPath, permission string, c client.Client, reader client.Reader, serviceAccountName, podName, namespace, spcName, nodeID string) (map[string]string, string, error) {
 	if len(attributes) == 0 {
 		return nil, "", errors.New("missing attributes")
 	}
@@ -359,7 +362,7 @@ func (ns *nodeServer) mountSecretsStoreObjectContent(ctx context.Context, provid
 
 	klog.InfoS("Using gRPC client", "provider", providerName, "pod", podName)
 
-	return MountContent(ctx, client, attributes, secrets, targetPath, permission, nil)
+	return MountContent(ctx, client, attributes, secrets, targetPath, permission, nil, c, reader, serviceAccountName, podName, namespace, spcName, nodeID)
 }
 
 func (ns *nodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {

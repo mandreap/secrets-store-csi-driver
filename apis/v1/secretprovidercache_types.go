@@ -24,7 +24,7 @@ import (
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
 type CacheSecret struct {
-	SecretName       string            `json:"secretName,omitempty"`
+	// SecretName       string            `json:"secretName,omitempty"`
 	SecretType       string            `json:"secretType,omitempty"`
 	Labels           map[string]string `json:"labels,omitempty"`
 	Annotations      map[string]string `json:"annotations,omitempty"`
@@ -32,14 +32,17 @@ type CacheSecret struct {
 }
 
 type CacheSecretProviderClassSecrets struct {
-	SecretProviderClassName string         `json:"secretProviderClassName,omitempty"`
-	CacheSecrets            []*CacheSecret `json:"secrets,omitempty"`
+	// SecretProviderClassName string `json:"secretProviderClassName,omitempty"`
+	// map of secretName to secret
+	CacheSecretsMap map[string]*CacheSecret `json:"cacheSecretsMap,omitempty"`
 }
 
 type CachePodSecrets struct {
-	PodName                    string                             `json:"podName,omitempty"`
-	CacheSecretsSpcMapping     []*CacheSecretProviderClassSecrets `json:"cacheSecretsSpcMapping,omitempty"`
-	ServicePrincipalSecretName string                             `json:"servicePrincipalSecretName,omitempty"`
+	// PodName string `json:"podName,omitempty"`
+	// map of secretProviderClassName to secrets
+	CacheSecretsSpcMapping map[string]*CacheSecretProviderClassSecrets `json:"cacheSecretsSpcMapping,omitempty"`
+	// each pod can have a service principal associated with it
+	ServicePrincipalNodeRef string `json:"servicePrincipalNodeRef,omitempty"`
 }
 
 // SecretProviderCacheSpec defines the desired state of SecretProviderCache
@@ -50,7 +53,8 @@ type SecretProviderCacheSpec struct {
 	ServiceAccountName string `json:"serviceAccountName,omitempty"`
 	// identifier should be unique
 	// we can have either have a SP with password or federated workload identities
-	PodSecrets []*CachePodSecrets `json:"podSecrets,omitempty"`
+	// map of podName to podSecrets
+	PodSecretsMap map[string]*CachePodSecrets `json:"podSecretsMap,omitempty"`
 }
 
 // SecretProviderCacheStatus defines the observed state of SecretProviderCache
