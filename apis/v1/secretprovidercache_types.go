@@ -23,26 +23,28 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-type CacheSecret struct {
-	// SecretName       string            `json:"secretName,omitempty"`
-	SecretType       string            `json:"secretType,omitempty"`
-	Labels           map[string]string `json:"labels,omitempty"`
-	Annotations      map[string]string `json:"annotations,omitempty"`
-	SecretObjectData map[string][]byte `json:"secretObjectData,omitempty"`
+type CacheFile struct {
+	// The relative path of the file within the mount.
+	// May not be an absolute path.
+	// May not contain the path element '..'.
+	// May not start with the string '..'.
+	Path string `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	// The mode bits used to set permissions on this file.
+	// Must be a decimal value between 0 and 511.
+	Mode int32 `protobuf:"varint,2,opt,name=mode,proto3" json:"mode,omitempty"`
+	// The file contents.
+	Contents []byte `protobuf:"bytes,3,opt,name=contents,proto3" json:"contents,omitempty"`
 }
 
-type CacheSecretProviderClassSecrets struct {
-	// SecretProviderClassName string `json:"secretProviderClassName,omitempty"`
-	// map of secretName to secret
-	CacheSecretsMap map[string]*CacheSecret `json:"cacheSecretsMap,omitempty"`
+type CacheSpcNodeRefMap struct {
+	NodePublishSecretRef string        `json:"nodePublishSecretRef,omitempty"`
+	SecretFiles          *[]*CacheFile `json:"secretFiles,omitempty"`
 }
 
 type CachePodSecrets struct {
-	// PodName string `json:"podName,omitempty"`
 	// map of secretProviderClassName to secrets
-	CacheSecretsSpcMapping map[string]*CacheSecretProviderClassSecrets `json:"cacheSecretsSpcMapping,omitempty"`
-	// each pod can have a service principal associated with it
-	ServicePrincipalNodeRef string `json:"servicePrincipalNodeRef,omitempty"`
+	// SecretProviderClassName is the key
+	CacheSecretFilesSpcMapping map[string]*CacheSpcNodeRefMap `json:"cacheSecretFilesSpcMapping,omitempty"`
 }
 
 // SecretProviderCacheSpec defines the desired state of SecretProviderCache

@@ -397,7 +397,7 @@ func (r *Reconciler) reconcile(ctx context.Context, spcps *secretsstorev1.Secret
 	}
 	// node id is "", because we expect to retrieve the cache instead of creating it
 	// TODO: we need to pass a writer here to update the cache
-	newObjectVersions, errorReason, err := secretsstore.MountContent(ctx, providerClient, string(paramsJSON), string(secretsJSON), spcps.Status.TargetPath, string(permissionJSON), oldObjectVersions, nil /*todo we need a writer here to update*/, r.cache, pod.Spec.ServiceAccountName, pod.Name, pod.Namespace, spc.Name, "")
+	newObjectVersions, errorReason, err := secretsstore.MountContent(ctx, providerClient, string(paramsJSON), string(secretsJSON), spcps.Status.TargetPath, string(permissionJSON), oldObjectVersions, nil /*todo we need a writer here to update*/, r.cache, pod.Spec.ServiceAccountName, pod.Name, pod.Namespace, spc.Name, "", "")
 	if err != nil {
 		r.generateEvent(pod, corev1.EventTypeWarning, mountRotationFailedReason, fmt.Sprintf("provider mount err: %+v", err))
 		return fmt.Errorf("failed to rotate objects for pod %s/%s, err: %w", spcps.Namespace, spcps.Status.PodName, err)

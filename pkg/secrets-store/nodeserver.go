@@ -114,7 +114,6 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	attrib := req.GetVolumeContext()
 	mountFlags := req.GetVolumeCapability().GetMount().GetMountFlags()
 	secrets := req.GetSecrets()
-
 	secretProviderClass := attrib[secretProviderClassField]
 	providerName = attrib["providerName"]
 	podName = attrib[CSIPodName]
@@ -210,11 +209,16 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		klog.ErrorS(err, "failed to marshal parameters", "pod", klog.ObjectRef{Namespace: podNamespace, Name: podName})
 		return nil, err
 	}
+
+	// TODO: check if clientid is a key for all providers
+	var nodeRefKey = secrets["clientid"]
 	secretStr, err := json.Marshal(secrets)
 	if err != nil {
 		klog.ErrorS(err, "failed to marshal node publish secrets", "pod", klog.ObjectRef{Namespace: podNamespace, Name: podName})
 		return nil, err
 	}
+	klog.InfoS("secrets nodePublishReference", "secrets", secretStr, "secrets", secrets)
+
 	permissionStr, err := json.Marshal(FilePermission)
 	if err != nil {
 		klog.ErrorS(err, "failed to marshal file permission", "pod", klog.ObjectRef{Namespace: podNamespace, Name: podName})
@@ -237,9 +241,8 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 	mounted = true
 	var objectVersions map[string]string
-	// (ctx context.Context, client v1alpha1.CSIDriverProviderClient, attributes, secrets, targetPath, permission string, oldObjectVersions map[string]string,
-	// c client.Client, reader client.Reader, serviceAccountName, podName, namespace, spcName, nodeID string)
-	if objectVersions, errorReason, err = ns.mountSecretsStoreObjectContent(ctx, providerName, string(parametersStr), string(secretStr), targetPath, string(permissionStr), ns.client, ns.reader, serviceAccountName, podName, podNamespace, secretProviderClass, ns.nodeID); err != nil {
+	klog.InfoS("secrets str", "secretsStr", secretStr)
+	if objectVersions, errorReason, err = ns.mountSecretsStoreObjectContent(ctx, providerName, string(parametersStr), string(secretStr), targetPath, string(permissionStr), ns.client, ns.reader, serviceAccountName, podName, podNamespace, secretProviderClass, nodeRefKey, ns.nodeID); err != nil {
 		klog.ErrorS(err, "failed to mount secrets store object content", "pod", klog.ObjectRef{Namespace: podNamespace, Name: podName})
 		return nil, fmt.Errorf("failed to mount secrets store objects for pod %s/%s, err: %w", podNamespace, podName, err)
 	}
@@ -344,7 +347,7 @@ func (ns *nodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
 
-func (ns *nodeServer) mountSecretsStoreObjectContent(ctx context.Context, providerName, attributes, secrets, targetPath, permission string, c client.Client, reader client.Reader, serviceAccountName, podName, namespace, spcName, nodeID string) (map[string]string, string, error) {
+func (ns *nodeServer) mountSecretsStoreObjectContent(ctx context.Context, providerName, attributes, secrets, targetPath, permission string, c client.Client, reader client.Reader, serviceAccountName, podName, namespace, spcName, nodeRefKey, nodeID string) (map[string]string, string, error) {
 	if len(attributes) == 0 {
 		return nil, "", errors.New("missing attributes")
 	}
@@ -362,7 +365,7 @@ func (ns *nodeServer) mountSecretsStoreObjectContent(ctx context.Context, provid
 
 	klog.InfoS("Using gRPC client", "provider", providerName, "pod", podName)
 
-	return MountContent(ctx, client, attributes, secrets, targetPath, permission, nil, c, reader, serviceAccountName, podName, namespace, spcName, nodeID)
+	return MountContent(ctx, client, attributes, secrets, targetPath, permission, nil, c, reader, serviceAccountName, podName, namespace, spcName, nodeRefKey, nodeID)
 }
 
 func (ns *nodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {

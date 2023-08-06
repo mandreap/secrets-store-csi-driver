@@ -22,9 +22,6 @@ import (
 	"sync"
 	"time"
 
-	secretsstorev1 "sigs.k8s.io/secrets-store-csi-driver/apis/v1"
-	"sigs.k8s.io/secrets-store-csi-driver/pkg/client/clientset/versioned/scheme"
-
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -38,6 +35,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	secretsstorev1 "sigs.k8s.io/secrets-store-csi-driver/apis/v1"
+	"sigs.k8s.io/secrets-store-csi-driver/pkg/client/clientset/versioned/scheme"
 )
 
 // SecretProviderCacheReconciler reconciles a SecretProviderCache object
@@ -111,6 +110,8 @@ func (r *SecretProviderCacheReconciler) Patcher(ctx context.Context) error {
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups="storage.k8s.io",resources=csidrivers,verbs=get;list;watch,resourceNames=secrets-store.csi.k8s.io
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
+// These permissions are required for nodePublishSecretRef
 
 func (r *SecretProviderCacheReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	r.mutex.Lock()
@@ -127,7 +128,6 @@ func (r *SecretProviderCacheReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{}, err
 	}
 
-	klog.InfoS("CACHE reconcile:", "spCache", spCache)
 	klog.InfoS("CACHE reconcile completed", "spc", req.NamespacedName.String())
 
 	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil

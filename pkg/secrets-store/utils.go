@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path"
 	"strings"
 
 	secretsstorev1 "sigs.k8s.io/secrets-store-csi-driver/apis/v1"
@@ -90,43 +89,68 @@ func getSecretProviderItem(ctx context.Context, c client.Client, name, namespace
 	return spc, nil
 }
 
-// todo: add error checks
-func addFileMissingSecretsToCache(unfoundSecrets []*v1alpha1.File, cacheSecrets map[string]*secretsstorev1.CacheSecret) {
-	if len(unfoundSecrets) == 0 {
+func addMissingSecretsFiles(file *[]*secretsstorev1.CacheFile, fileSecrets []*v1alpha1.File) {
+	if file == nil {
+		klog.InfoS("file is nil: can't add file secrets to cacheFile")
 		return
 	}
 
-	// for all the secrets which weren't found yet, add them to the cache
-	for _, secret := range unfoundSecrets {
-		secretName := strings.TrimSpace(path.Base(secret.Path))
-		// we didn't find the secret, we need to add it to the cache
-		cacheSecrets[secretName] = &secretsstorev1.CacheSecret{
-			SecretType:       "Opaque", /*TODO: retrieve the type from the spc or from somewhere else*/
-			SecretObjectData: map[string][]byte{secretName: secret.Contents},
+	for _, fileSecret := range fileSecrets {
+		found := false
+		for _, f := range *file {
+			if fileSecret.Path == f.Path {
+				found = true
+				break
+			}
 		}
+		if !found {
+			*file = append(*file, &secretsstorev1.CacheFile{
+				Path:     fileSecret.Path,
+				Mode:     fileSecret.Mode,
+				Contents: fileSecret.Contents,
+			})
+		}
+	}
+}
+
+func addFileSecretsToCacheFile(cacheFile *[]*secretsstorev1.CacheFile, fileSecrets []*v1alpha1.File) {
+	if cacheFile == nil {
+		klog.InfoS("cacheFile is nil: can't add file secrets to cacheFile")
+		return
+	}
+	for _, file := range fileSecrets {
+		(*cacheFile) = append(*cacheFile, &secretsstorev1.CacheFile{
+			Path:     file.Path,
+			Mode:     file.Mode,
+			Contents: file.Contents,
+		})
 	}
 }
 
 // createOrUpdateSecretProviderCache creates secret provider cache if it doesn't exist.
 // if the secret provider cache already exists, it updates the status and owner references.
-func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, reader client.Reader, serviceAccountName, podName, namespace, spcName, nodeID string, secrets []*v1alpha1.File) error {
+func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, reader client.Reader, serviceAccountName, podName, namespace, spcName, nodeID, nodeRefKey string, fileSecrets []*v1alpha1.File) error {
 	spCacheName := namespace + "-" + serviceAccountName + "-cache"
 	klog.InfoS("creating secret provider cache", "spCache", spCacheName)
 
+	// map between pod name (for now) and spcSecretsMapping
+	// key == podname, value == spc:secrets map
 	podSecretsMap := make(map[string]*secretsstorev1.CachePodSecrets)
-	spcSecretsMapping := make(map[string]*secretsstorev1.CacheSecretProviderClassSecrets)
-	cacheSecretMap := make(map[string]*secretsstorev1.CacheSecret)
-	// add all the secrets to the cacheSecretMap
-	addFileMissingSecretsToCache(secrets, cacheSecretMap)
 
-	// add the cacheSecretMap to the spcSecretsMapping
-	spcSecretsMapping[spcName] = &secretsstorev1.CacheSecretProviderClassSecrets{
-		CacheSecretsMap: cacheSecretMap,
+	// map between the spc name and the cacheSecretsMap
+	// key == spc name, value == file secrets
+	spcNodeRefMapping := make(map[string]*secretsstorev1.CacheSpcNodeRefMap)
+
+	spcNodeRefMapping[spcName] = &secretsstorev1.CacheSpcNodeRefMap{
+		SecretFiles:          &[]*secretsstorev1.CacheFile{},
+		NodePublishSecretRef: nodeRefKey,
 	}
+
+	addFileSecretsToCacheFile(spcNodeRefMapping[spcName].SecretFiles, fileSecrets)
 
 	// add the spcSecretsMapping to the podSecretsMap
 	podSecretsMap[podName] = &secretsstorev1.CachePodSecrets{
-		CacheSecretsSpcMapping: spcSecretsMapping,
+		CacheSecretFilesSpcMapping: spcNodeRefMapping,
 	}
 
 	// add the podSecretsMap to the spCache
@@ -152,7 +176,7 @@ func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, rea
 	}
 
 	klog.Info("SecretProviderCache: already exists, updating it")
-
+	klog.InfoS("updating secret provider cache", "spCache", spCacheName, "secretFiles", fileSecrets)
 	spCacheUpdate := &secretsstorev1.SecretProviderCache{}
 
 	// the secret provider class pod status with the name already exists, update it
@@ -173,37 +197,26 @@ func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, rea
 	// if the pod wasn't found, we need to add it to the cache
 	if !ok {
 		// add the podSecretsMap to the spCache
-		spCacheUpdate.Spec.PodSecretsMap[podName] = &secretsstorev1.CachePodSecrets{
-			CacheSecretsSpcMapping: spcSecretsMapping,
-		}
-		spCacheUpdate.Spec = secretsstorev1.SecretProviderCacheSpec{
-			PodSecretsMap:      spCacheUpdate.Spec.PodSecretsMap,
-			ServiceAccountName: serviceAccountName,
-		}
+		spCacheUpdate.Spec.PodSecretsMap[podName] = spCache.Spec.PodSecretsMap[podName]
 		spCacheUpdate.Spec.ServiceAccountName = serviceAccountName
 		spCacheUpdate.Labels = map[string]string{secretsstorev1.InternalNodeLabel: nodeID}
 		return c.Update(ctx, spCacheUpdate)
 	}
 
 	// else the pod was found, we need to check if the secret provider class is already present
-	spcSecretsMappingUpdate, ok := podSecretsMapUpdate.CacheSecretsSpcMapping[spcName]
+	spcNodeRefMappingUpdate, ok := podSecretsMapUpdate.CacheSecretFilesSpcMapping[spcName]
 
 	// if the secret provider class wasn't found, we need to add it to the cache
 	if !ok {
 		// add the spcSecretsMapping to the podSecretsMap
-		podSecretsMapUpdate.CacheSecretsSpcMapping[spcName] = &secretsstorev1.CacheSecretProviderClassSecrets{
-			CacheSecretsMap: cacheSecretMap,
-		}
+		spCacheUpdate.Spec.PodSecretsMap[podName].CacheSecretFilesSpcMapping[spcName] = spcNodeRefMapping[spcName]
 		spCacheUpdate.Spec.ServiceAccountName = serviceAccountName
 		spCacheUpdate.Labels = map[string]string{secretsstorev1.InternalNodeLabel: nodeID}
 		return c.Update(ctx, spCacheUpdate)
 	}
 
 	// else the secret provider class was found, we need to check if the secrets are already present
-	cacheSecretMapUpdate := spcSecretsMappingUpdate.CacheSecretsMap
-
-	// add all the secrets to the cacheSecretMap
-	addFileMissingSecretsToCache(secrets, cacheSecretMapUpdate)
+	addMissingSecretsFiles(spcNodeRefMappingUpdate.SecretFiles, fileSecrets)
 
 	// update the labels of the secret provider class pod status to match the node label
 	spCacheUpdate.Spec.ServiceAccountName = serviceAccountName

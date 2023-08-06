@@ -85,6 +85,13 @@ type PluginClientBuilder struct {
 	opts        []grpc.DialOption
 }
 
+type providerClientStruct struct {
+	c client.Client
+	r client.Reader
+}
+
+var providerClient *providerClientStruct
+
 // NewPluginClientBuilder creates a PluginClientBuilder that will connect to
 // plugins in the provided absolute path to a folder. Plugin servers must listen
 // to the unix domain socket at:
@@ -226,7 +233,14 @@ func (p *PluginClientBuilder) HealthCheck(ctx context.Context, interval time.Dur
 // MountContent calls the client's Mount() RPC with helpers to format the
 // request and interpret the response.
 func MountContent(ctx context.Context, client v1alpha1.CSIDriverProviderClient, attributes, secrets, targetPath, permission string, oldObjectVersions map[string]string,
-	c client.Client, reader client.Reader, serviceAccountName, podName, namespace, spcName, nodeID string) (map[string]string, string, error) {
+	c client.Client, reader client.Reader, serviceAccountName, podName, namespace, spcName, nodeRefKey, nodeID string) (map[string]string, string, error) {
+	if providerClient == nil {
+		providerClient = &providerClientStruct{
+			c: c,
+			r: reader,
+		}
+	}
+
 	var objVersions []*v1alpha1.ObjectVersion
 	for obj, version := range oldObjectVersions {
 		objVersions = append(objVersions, &v1alpha1.ObjectVersion{Id: obj, Version: version})
@@ -283,12 +297,16 @@ func MountContent(ctx context.Context, client v1alpha1.CSIDriverProviderClient, 
 	for _, secret := range listOfSecrets {
 		klog.InfoS("mount response file", "content", string(secret.Contents))
 	}
-	// TODO: create the cache here once we managed to get all the secrets
-	klog.Info("NodePublishVolume: Creating CACHE for pod")
-	if err = createOrUpdateSecretProviderCache(ctx, c, reader, serviceAccountName, podName, namespace, spcName, nodeID, listOfSecrets); err != nil {
+
+	if providerClient == nil {
+		klog.Warning("ProviderClient is nil, can't create or update CACHE")
+		return objectVersions, "", nil
+	}
+
+	klog.Info("Creating CACHE for pod")
+	if err = createOrUpdateSecretProviderCache(ctx, providerClient.c, providerClient.r, serviceAccountName, podName, namespace, spcName, nodeID, nodeRefKey, listOfSecrets); err != nil {
 		klog.Infof("failed to create secret provider CACHE for pod %s/%s, err: %v", namespace, podName, err)
-		message := fmt.Sprintf("failed to create secret provider CACHE for pod %s/%s, err: %v", namespace, podName, err)
-		return objectVersions, message, err
+		return objectVersions, fmt.Sprintf("failed to create secret provider CACHE for pod %s/%s, err: %v", namespace, podName, err), err
 	}
 	return objectVersions, "", nil
 }
