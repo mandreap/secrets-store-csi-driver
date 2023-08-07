@@ -23,7 +23,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apiruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
@@ -118,19 +118,53 @@ func (r *SecretProviderCacheReconciler) Reconcile(ctx context.Context, req ctrl.
 	defer r.mutex.Unlock()
 
 	klog.InfoS("CACHE reconcile started", "spc", req.NamespacedName.String())
-	spCache := &secretsstorev1.SecretProviderCache{}
-	if err := r.reader.Get(ctx, req.NamespacedName, spCache); err != nil {
-		if apierrors.IsNotFound(err) {
-			klog.InfoS("reconcile complete", "spCache", req.NamespacedName.String())
-			return ctrl.Result{}, nil
-		}
-		klog.ErrorS(err, "failed to get secret provider cache", "spCache", req.NamespacedName.String())
+	spCacheList := &secretsstorev1.SecretProviderCacheList{}
+	if err := r.reader.List(ctx, spCacheList, r.ListOptionsLabelSelector()); err != nil {
+		klog.ErrorS(err, "failed to list SecretProviderCache")
 		return ctrl.Result{}, err
+	}
+	spCaches := spCacheList.Items
+	for i := range spCaches {
+		spCache := spCaches[i]
+		namespace := spCache.ObjectMeta.Namespace
+		//serviceAccount := spCache.Spec.ServiceAccountName
+		for _, cachePodSpcMap := range spCache.Spec.WorkloadSecretsMap {
+			for podName, _ := range cachePodSpcMap.PodsName {
+				klog.InfoS("podName", "podName", podName)
+				pod := &corev1.Pod{}
+				err := r.reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: podName}, pod)
+				if err != nil && !errors.IsNotFound(err) {
+					return ctrl.Result{}, err
+				}
+				if errors.IsNotFound(err) {
+					klog.InfoS("pod not found", "pod", podName)
+					if len(cachePodSpcMap.PodsName) > 1 {
+						delete(cachePodSpcMap.PodsName, podName)
+					}
+					//TODO: we need to check we're in the online mode here to remove all pods from the cache
+					r.writer.Update(ctx, &spCache)
+				}
+				for _, ownerRef := range pod.OwnerReferences {
+					klog.InfoS("Pod owner references", "ownerRef", ownerRef.Name, "ownerRefUID", ownerRef.UID)
+				}
+				klog.InfoS("pod", "pod labels", pod.Labels)
+				klog.InfoS("pod", "pod annotations", pod.Annotations)
+
+				// TODO: check if we're in online mode here and if we are then check if pod is running
+				// check if pod is running
+				if pod.Status.Phase == corev1.PodRunning {
+					klog.InfoS("pod is running", "pod", pod.Name)
+
+				}
+				// if the pod is not running, then we need to check if the pod is in the cache, remove its associated data,
+				// and then update the cache
+			}
+		}
 	}
 
 	klog.InfoS("CACHE reconcile completed", "spc", req.NamespacedName.String())
 
-	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
+	return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 }
 
 func (r *SecretProviderCacheReconciler) SetupWithManager(mgr ctrl.Manager) error {

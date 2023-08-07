@@ -22,6 +22,7 @@ import (
 	"os"
 	"strings"
 
+	corev1 "k8s.io/api/core/v1"
 	secretsstorev1 "sigs.k8s.io/secrets-store-csi-driver/apis/v1"
 	"sigs.k8s.io/secrets-store-csi-driver/pkg/util/runtimeutil"
 	"sigs.k8s.io/secrets-store-csi-driver/pkg/util/spcpsutil"
@@ -130,12 +131,12 @@ func addFileSecretsToCacheFile(cacheFile *[]*secretsstorev1.CacheFile, fileSecre
 // createOrUpdateSecretProviderCache creates secret provider cache if it doesn't exist.
 // if the secret provider cache already exists, it updates the status and owner references.
 func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, reader client.Reader, serviceAccountName, podName, namespace, spcName, nodeID, nodeRefKey string, fileSecrets []*v1alpha1.File) error {
-	spCacheName := namespace + "-" + serviceAccountName + "-cache"
+	spCacheName := namespace + "-" + serviceAccountName + "-" + nodeRefKey + "-cache"
 	klog.InfoS("creating secret provider cache", "spCache", spCacheName)
 
 	// map between pod name (for now) and spcSecretsMapping
-	// key == podname, value == spc:secrets map
-	podSecretsMap := make(map[string]*secretsstorev1.CachePodSecrets)
+	// key == podname/ownerRef + pod_hash, value == spc:secrets map
+	workloadSecretsMap := make(map[string]*secretsstorev1.CachePodSecrets)
 
 	// map between the spc name and the cacheSecretsMap
 	// key == spc name, value == file secrets
@@ -148,12 +149,38 @@ func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, rea
 
 	addFileSecretsToCacheFile(spcNodeRefMapping[spcName].SecretFiles, fileSecrets)
 
-	// add the spcSecretsMapping to the podSecretsMap
-	podSecretsMap[podName] = &secretsstorev1.CachePodSecrets{
-		CacheSecretFilesSpcMapping: spcNodeRefMapping,
+	pod := &corev1.Pod{}
+	err := reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: podName}, pod)
+	if err != nil {
+		klog.ErrorS(err, "failed to get pod", "podName", podName)
+		return err
 	}
 
-	// add the podSecretsMap to the spCache
+	var warningNoPersistencyOnRestart = false
+	var keyInWorkloadMap string
+	if len(pod.OwnerReferences) == 0 {
+		klog.Warning("pod doesn't have owner references: %s", podName)
+		warningNoPersistencyOnRestart = true
+		keyInWorkloadMap = podName
+	}
+
+	for _, ownerRef := range pod.OwnerReferences {
+		klog.InfoS("Pod owner references", "ownerRef", ownerRef.Name, "ownerRefUID", ownerRef.UID, "ownerRefKind", ownerRef.Kind)
+		warningNoPersistencyOnRestart = false
+		keyInWorkloadMap = strings.ReplaceAll(ownerRef.Name, pod.Labels["pod-template-hash"], "")
+		keyInWorkloadMap = strings.TrimRight(keyInWorkloadMap, "-")
+	}
+
+	// add the spcSecretsMapping to the workloadSecretsMap
+	podsNames := make(map[string]secretsstorev1.EmptyStruct)
+	podsNames[podName] = secretsstorev1.EmptyStruct{}
+	workloadSecretsMap[keyInWorkloadMap] = &secretsstorev1.CachePodSecrets{
+		CacheSecretFilesSpcMapping:    spcNodeRefMapping,
+		WarningNoPersistencyOnRestart: warningNoPersistencyOnRestart,
+		PodsName:                      podsNames,
+	}
+
+	// add the workloadSecretsMap to the spCache
 	spCache := &secretsstorev1.SecretProviderCache{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      spCacheName,
@@ -163,7 +190,7 @@ func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, rea
 		Spec: secretsstorev1.SecretProviderCacheSpec{
 			// Secrets is a list of secrets that should be cached
 			ServiceAccountName: serviceAccountName,
-			PodSecretsMap:      podSecretsMap,
+			WorkloadSecretsMap: workloadSecretsMap,
 		},
 	}
 
@@ -179,37 +206,43 @@ func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, rea
 	klog.InfoS("updating secret provider cache", "spCache", spCacheName, "secretFiles", fileSecrets)
 	spCacheUpdate := &secretsstorev1.SecretProviderCache{}
 
-	// the secret provider class pod status with the name already exists, update it
+	// the secret provider cache already exists, update it
 	if err := c.Get(ctx, client.ObjectKey{Name: spCacheName, Namespace: namespace}, spCacheUpdate); err != nil {
 		if !apierrors.IsNotFound(err) {
 			return err
 		}
-		// the secret provider class pod status could be missing in the cache because it was labeled with a different node
+		// the secret provider cache could be missing in the cache because it was labeled with a different node
 		// label, so we need to get it from the API server
 		if err = reader.Get(ctx, client.ObjectKey{Name: spCacheName, Namespace: namespace}, spCacheUpdate); err != nil {
 			return err
 		}
 	}
 
-	// retrieve the podSecretsMap from the spCache for the podName
-	podSecretsMapUpdate, ok := spCacheUpdate.Spec.PodSecretsMap[podName]
+	// retrieve the workloadSecretsMap from the spCache for the keyInWorkloadMap
+	podSecretsMapUpdate, ok := spCacheUpdate.Spec.WorkloadSecretsMap[keyInWorkloadMap]
 
-	// if the pod wasn't found, we need to add it to the cache
+	// if the workload wasn't found, we need to add it to the cache
 	if !ok {
-		// add the podSecretsMap to the spCache
-		spCacheUpdate.Spec.PodSecretsMap[podName] = spCache.Spec.PodSecretsMap[podName]
+		// add the workloadSecretsMap to the spCache
+		spCacheUpdate.Spec.WorkloadSecretsMap[keyInWorkloadMap] = spCache.Spec.WorkloadSecretsMap[keyInWorkloadMap]
 		spCacheUpdate.Spec.ServiceAccountName = serviceAccountName
 		spCacheUpdate.Labels = map[string]string{secretsstorev1.InternalNodeLabel: nodeID}
 		return c.Update(ctx, spCacheUpdate)
 	}
 
-	// else the pod was found, we need to check if the secret provider class is already present
+	// else the workload was found, we need to check if the secret provider class is already present and the podName
+	_, ok = podSecretsMapUpdate.PodsName[podName]
+	if !ok {
+		spCacheUpdate.Spec.WorkloadSecretsMap[keyInWorkloadMap].PodsName[podName] = secretsstorev1.EmptyStruct{}
+	}
+
+	// else the podName was found, we need to check if the secret provider class is already present
 	spcNodeRefMappingUpdate, ok := podSecretsMapUpdate.CacheSecretFilesSpcMapping[spcName]
 
 	// if the secret provider class wasn't found, we need to add it to the cache
 	if !ok {
-		// add the spcSecretsMapping to the podSecretsMap
-		spCacheUpdate.Spec.PodSecretsMap[podName].CacheSecretFilesSpcMapping[spcName] = spcNodeRefMapping[spcName]
+		// add the spcSecretsMapping to the workloadSecretsMap
+		spCacheUpdate.Spec.WorkloadSecretsMap[keyInWorkloadMap].CacheSecretFilesSpcMapping[spcName] = spcNodeRefMapping[spcName]
 		spCacheUpdate.Spec.ServiceAccountName = serviceAccountName
 		spCacheUpdate.Labels = map[string]string{secretsstorev1.InternalNodeLabel: nodeID}
 		return c.Update(ctx, spCacheUpdate)

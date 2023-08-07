@@ -65,6 +65,9 @@ const (
 	// CSIPodServiceAccountTokens is the service account tokens of the pod that the mount is created for
 	CSIPodServiceAccountTokens = "csi.storage.k8s.io/serviceAccount.tokens" //nolint
 
+	// CSIPodOwnerReferences is the owner references of the pod that the mount is created for
+	CSIPodOwnerReferences = "csi.storage.k8s.io/pod.ownerReferences"
+
 	secretProviderClassField = "secretProviderClass"
 )
 
@@ -120,6 +123,9 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	podNamespace = attrib[CSIPodNamespace]
 	podUID = attrib[CSIPodUID]
 	serviceAccountName = attrib[CSIPodServiceAccountName]
+	ownerRef := attrib[CSIPodOwnerReferences]
+
+	klog.InfoS("ownerRef", "ownerRef", ownerRef)
 
 	mounted, err = ns.ensureMountPoint(targetPath)
 	if err != nil {

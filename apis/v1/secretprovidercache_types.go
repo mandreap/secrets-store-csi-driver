@@ -40,11 +40,13 @@ type CacheSpcNodeRefMap struct {
 	NodePublishSecretRef string        `json:"nodePublishSecretRef,omitempty"`
 	SecretFiles          *[]*CacheFile `json:"secretFiles,omitempty"`
 }
-
+type EmptyStruct struct{}
 type CachePodSecrets struct {
 	// map of secretProviderClassName to secrets
 	// SecretProviderClassName is the key
-	CacheSecretFilesSpcMapping map[string]*CacheSpcNodeRefMap `json:"cacheSecretFilesSpcMapping,omitempty"`
+	CacheSecretFilesSpcMapping    map[string]*CacheSpcNodeRefMap `json:"cacheSecretFilesSpcMapping,omitempty"`
+	WarningNoPersistencyOnRestart bool                           `json:"warningNoPersistencyOnRestart,omitempty"`
+	PodsName                      map[string]EmptyStruct         `json:"podsName,omitempty"`
 }
 
 // SecretProviderCacheSpec defines the desired state of SecretProviderCache
@@ -55,8 +57,8 @@ type SecretProviderCacheSpec struct {
 	ServiceAccountName string `json:"serviceAccountName,omitempty"`
 	// identifier should be unique
 	// we can have either have a SP with password or federated workload identities
-	// map of podName to podSecrets
-	PodSecretsMap map[string]*CachePodSecrets `json:"podSecretsMap,omitempty"`
+	// map of ownerRef (deployment_name + pod_spec_hash) or podName to podSecrets
+	WorkloadSecretsMap map[string]*CachePodSecrets `json:"podSecretsMap,omitempty"`
 }
 
 // SecretProviderCacheStatus defines the observed state of SecretProviderCache
