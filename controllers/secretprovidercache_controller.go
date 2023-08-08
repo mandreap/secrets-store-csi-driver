@@ -24,6 +24,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apiruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
@@ -111,7 +112,7 @@ func (r *SecretProviderCacheReconciler) Patcher(ctx context.Context) error {
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups="storage.k8s.io",resources=csidrivers,verbs=get;list;watch,resourceNames=secrets-store.csi.k8s.io
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
-// These permissions are required for nodePublishSecretRef
+// These permissions are required for nodePublishSecretRef - but since we don't update them here - to remove
 
 func (r *SecretProviderCacheReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	r.mutex.Lock()
@@ -120,51 +121,99 @@ func (r *SecretProviderCacheReconciler) Reconcile(ctx context.Context, req ctrl.
 	klog.InfoS("CACHE reconcile started", "spc", req.NamespacedName.String())
 	spCacheList := &secretsstorev1.SecretProviderCacheList{}
 	if err := r.reader.List(ctx, spCacheList, r.ListOptionsLabelSelector()); err != nil {
-		klog.ErrorS(err, "failed to list SecretProviderCache")
+		klog.ErrorS(err, "Failed to list SecretProviderCache")
 		return ctrl.Result{}, err
 	}
 	spCaches := spCacheList.Items
 	for i := range spCaches {
 		spCache := spCaches[i]
 		namespace := spCache.ObjectMeta.Namespace
-		//serviceAccount := spCache.Spec.ServiceAccountName
-		for _, cachePodSpcMap := range spCache.Spec.WorkloadSecretsMap {
-			for podName, _ := range cachePodSpcMap.PodsName {
-				klog.InfoS("podName", "podName", podName)
+		if spCache.Spec.SpcFilesWorkloads == nil {
+			spCache.Status.WarningNoPersistencyOnRestart = false
+			err := r.Status().Update(ctx, &spCache)
+			if err != nil {
+				klog.ErrorS(err, "Failed to update Status for SecretProviderCache")
+				return ctrl.Result{}, err
+			}
+		}
+		var warning bool = false
+		cacheSpcWorkloadFiles := spCache.Spec.SpcFilesWorkloads
+		spcName := spCache.Spec.SecretProviderClassName
+		//klog.InfoS("Secret Provider Class Name", "spcName", spcName)
+		spc := &secretsstorev1.SecretProviderClass{}
+		err := r.reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: spcName}, spc)
+		if err != nil && !errors.IsNotFound(err) {
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, err
+		}
+		if errors.IsNotFound(err) {
+			//TODO: if in online mode remove the spc from the cache
+			klog.Warning("Can't find SPC: %s", spcName)
+		}
+		for _, cacheWorkload := range cacheSpcWorkloadFiles.WorkloadsMap {
+			for podName := range cacheWorkload.CachedPods {
+				shouldUpdate := false
 				pod := &corev1.Pod{}
-				err := r.reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: podName}, pod)
+				err = r.reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: podName}, pod)
 				if err != nil && !errors.IsNotFound(err) {
+					klog.ErrorS(err, "failed to get pod", "pod", klog.ObjectRef{Namespace: req.Namespace, Name: podName})
+					if apierrors.IsNotFound(err) {
+						return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+					}
 					return ctrl.Result{}, err
 				}
-				if errors.IsNotFound(err) {
+
+				// remove the pod is being terminated
+				// or the pod is in succeeded state (for jobs that complete aren't gc yet)
+				// or the pod is in a failed state (all containers get terminated)
+				if !pod.GetDeletionTimestamp().IsZero() || pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
+					klog.V(5).InfoS("pod is being terminated, skipping reconcile", "pod", klog.KObj(pod))
 					klog.InfoS("pod not found", "pod", podName)
-					if len(cachePodSpcMap.PodsName) > 1 {
-						delete(cachePodSpcMap.PodsName, podName)
-					}
-					//TODO: we need to check we're in the online mode here to remove all pods from the cache
-					r.writer.Update(ctx, &spCache)
+					delete(cacheWorkload.CachedPods, podName)
+					shouldUpdate = true
+					break
 				}
+
 				for _, ownerRef := range pod.OwnerReferences {
 					klog.InfoS("Pod owner references", "ownerRef", ownerRef.Name, "ownerRefUID", ownerRef.UID)
+					// can we have a deployment/replicaset etc set as owner of a pod after the pod was created?
+					podHash, ok := pod.Labels["pod-template-hash"]
+					if ownerRef.Kind == "Pod" && ok && strings.Contains(ownerRef.Name, podHash) && cacheWorkload.WorkloadName == podName {
+						cacheWorkload.OwnerReferenceName = ownerRef.Name
+						cacheWorkload.OwnerReferenceKind = ownerRef.Kind
+						cacheWorkload.WorkloadName = strings.ReplaceAll(ownerRef.Name, podHash, "")
+						cacheWorkload.WorkloadName = strings.TrimRight(cacheWorkload.WorkloadName, "-")
+						klog.Warning("Changing the workload kind and name in the cache here")
+						shouldUpdate = true
+						break
+					}
 				}
-				klog.InfoS("pod", "pod labels", pod.Labels)
-				klog.InfoS("pod", "pod annotations", pod.Annotations)
-
-				// TODO: check if we're in online mode here and if we are then check if pod is running
-				// check if pod is running
-				if pod.Status.Phase == corev1.PodRunning {
-					klog.InfoS("pod is running", "pod", pod.Name)
-
+				if shouldUpdate {
+					err = r.writer.Update(ctx, &spCache)
+					if err != nil {
+						return ctrl.Result{RequeueAfter: 10 * time.Second}, err
+					}
 				}
-				// if the pod is not running, then we need to check if the pod is in the cache, remove its associated data,
-				// and then update the cache
 			}
+
+			for _, cacheWorkload := range cacheSpcWorkloadFiles.WorkloadsMap {
+				if cacheWorkload.OwnerReferenceKind == "Pod" {
+					warning = true
+				}
+			}
+		}
+
+		//klog.InfoS("Updating status to:", "warning", warning)
+		spCache.Status.WarningNoPersistencyOnRestart = warning
+		err = r.Status().Update(ctx, &spCache)
+		if err != nil {
+			klog.ErrorS(err, "Failed to update Status for SecretProviderCache")
+			return ctrl.Result{RequeueAfter: 60 * time.Second}, err
 		}
 	}
 
 	klog.InfoS("CACHE reconcile completed", "spc", req.NamespacedName.String())
 
-	return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 }
 
 func (r *SecretProviderCacheReconciler) SetupWithManager(mgr ctrl.Manager) error {

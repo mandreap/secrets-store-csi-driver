@@ -35,18 +35,20 @@ type CacheFile struct {
 	// The file contents.
 	Contents []byte `protobuf:"bytes,3,opt,name=contents,proto3" json:"contents,omitempty"`
 }
-
-type CacheSpcNodeRefMap struct {
-	NodePublishSecretRef string        `json:"nodePublishSecretRef,omitempty"`
-	SecretFiles          *[]*CacheFile `json:"secretFiles,omitempty"`
-}
 type EmptyStruct struct{}
-type CachePodSecrets struct {
-	// map of secretProviderClassName to secrets
-	// SecretProviderClassName is the key
-	CacheSecretFilesSpcMapping    map[string]*CacheSpcNodeRefMap `json:"cacheSecretFilesSpcMapping,omitempty"`
-	WarningNoPersistencyOnRestart bool                           `json:"warningNoPersistencyOnRestart,omitempty"`
-	PodsName                      map[string]EmptyStruct         `json:"podsName,omitempty"`
+type CacheWorkload struct {
+	WorkloadName       string                 `json:"workloadName,omitempty"`
+	OwnerReferenceUID  string                 `json:"workloadUID,omitempty"`
+	OwnerReferenceName string                 `json:"ownerReferenceName,omitempty"`
+	OwnerReferenceKind string                 `json:"ownerReferenceKind,omitempty"`
+	CachedPods         map[string]EmptyStruct `json:"cachedPods,omitempty"`
+}
+
+type CacheSpcWorkloadFiles struct {
+	//SpcName      string                    `json:"spcName,omitempty"`
+	SecretFiles *[]*CacheFile `json:"secretFiles,omitempty"`
+	// Map WorkloadName to CacheWorkload
+	WorkloadsMap map[string]*CacheWorkload `json:"workloadsMap,omitempty"`
 }
 
 // SecretProviderCacheSpec defines the desired state of SecretProviderCache
@@ -54,18 +56,19 @@ type SecretProviderCacheSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	ServiceAccountName string `json:"serviceAccountName,omitempty"`
-	// identifier should be unique
-	// we can have either have a SP with password or federated workload identities
-	// map of ownerRef (deployment_name + pod_spec_hash) or podName to podSecrets
-	WorkloadSecretsMap map[string]*CachePodSecrets `json:"podSecretsMap,omitempty"`
+	ServiceAccountName   string `json:"serviceAccountName,omitempty"`
+	NodePublishSecretRef string `json:"nodePublishSecretRef,omitempty"`
+
+	SecretProviderClassName string                 `json:"SecretProviderClassName,omitempty"`
+	SpcFilesWorkloads       *CacheSpcWorkloadFiles `json:"spcFilesWorkloads,omitempty"`
 }
 
 // SecretProviderCacheStatus defines the observed state of SecretProviderCache
 type SecretProviderCacheStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	StatusSecretProviderClass string `json:"statusSecretProviderClass,omitempty"`
+	//StatusSecretProviderClass     string `json:"statusSecretProviderClass,omitempty"`
+	WarningNoPersistencyOnRestart bool `json:"warningNoPersistencyOnRestart,omitempty"`
 }
 
 // +kubebuilder:object:root=true
