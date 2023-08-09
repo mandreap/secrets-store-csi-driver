@@ -153,6 +153,7 @@ func (r *SecretProviderCacheReconciler) Reconcile(ctx context.Context, req ctrl.
 		mapOfPodsToDelete := make(map[string]string)
 		for _, cacheWorkload := range cacheSpcWorkloadFiles.WorkloadsMap {
 			klog.InfoS("Checking pods", "CachedPods", cacheWorkload.CachedPods)
+			//TODO: refactor these into functions
 			if cacheWorkload.OwnerReferenceKind == "Pod" {
 				klog.InfoS("Workload is a Pod", "workload = ", cacheWorkload.WorkloadName)
 				podName := cacheWorkload.WorkloadName

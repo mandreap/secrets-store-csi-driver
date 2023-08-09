@@ -266,13 +266,9 @@ func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, rea
 			spCacheUpdate.Spec.SpcFilesWorkloads.WorkloadsMap[workloadName] = cacheWorkloadItem
 			shouldUpdateCache = true
 		} else {
+
 			klog.InfoS("Workload already present in the cache:", "workloadName", workloadName)
-			if ownerUID != existingWorkloadItem.OwnerReferenceUID {
-				klog.InfoS("Different UIDs", "workloadName", workloadName, "ownerUID", ownerUID, "existing ownerUID", existingWorkloadItem.OwnerReferenceUID)
-			}
-
 			klog.InfoS("Check pod is present", "pod = ", podName)
-
 			if spCacheUpdate.Spec.SpcFilesWorkloads.WorkloadsMap[workloadName].CachedPods == nil {
 				klog.InfoS("Pod map is nil, creating a new one")
 				spCacheUpdate.Spec.SpcFilesWorkloads.WorkloadsMap[workloadName].CachedPods = map[string]string{podName: podName}
@@ -284,6 +280,11 @@ func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, rea
 					spCacheUpdate.Spec.SpcFilesWorkloads.WorkloadsMap[workloadName].CachedPods[podName] = podName
 					shouldUpdateCache = true
 				}
+			}
+
+			if ownerUID != existingWorkloadItem.OwnerReferenceUID {
+				klog.InfoS("Different UIDs", "workloadName", workloadName, "ownerUID", ownerUID, "existing ownerUID", existingWorkloadItem.OwnerReferenceUID)
+				spCacheUpdate.Spec.SpcFilesWorkloads.WorkloadsMap[workloadName].WarningNewUID = true
 			}
 		}
 	}

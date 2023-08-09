@@ -42,6 +42,7 @@ type CacheWorkload struct {
 	OwnerReferenceName string            `json:"ownerReferenceName,omitempty"`
 	OwnerReferenceKind string            `json:"ownerReferenceKind,omitempty"`
 	CachedPods         map[string]string `json:"cachedPods,omitempty"`
+	WarningNewUID      bool              `json:"warningNewUID,omitempty"`
 }
 
 type CacheSpcWorkloadFiles struct {
