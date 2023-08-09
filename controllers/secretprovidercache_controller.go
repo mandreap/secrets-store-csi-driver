@@ -231,31 +231,32 @@ func (r *SecretProviderCacheReconciler) Reconcile(ctx context.Context, req ctrl.
 					shouldUpdateCache = true
 					continue
 				}
-
-				for _, ownerRef := range pod.OwnerReferences {
-					if ownerRef.Kind != "Pod" {
-						break
-					}
+				/*
 					// can we have a deployment/replicaset etc set as owner of a pod after the pod was created?
-					klog.InfoS("Pod owner references", "ownerRef", ownerRef.Name, "ownerRefUID", ownerRef.UID)
-					podHash, ok := pod.Labels["pod-template-hash"]
-					if ownerRef.Kind != "Pod" && ok && strings.Contains(ownerRef.Name, podHash) && cacheWorkload.WorkloadName == podName {
-						cacheWorkload.OwnerReferenceName = ownerRef.Name
-						cacheWorkload.OwnerReferenceKind = ownerRef.Kind
-						cacheWorkload.OwnerReferenceUID = string(ownerRef.UID)
-						cacheWorkload.WorkloadName = strings.ReplaceAll(ownerRef.Name, podHash, "")
-						cacheWorkload.WorkloadName = strings.TrimRight(cacheWorkload.WorkloadName, "-")
-						klog.InfoS("Changing the workload kind and name in the cache:", "workloadName", cacheWorkload.WorkloadName, "workloadKind", cacheWorkload.OwnerReferenceKind)
-						shouldUpdateCache = true
-						break
-					}
-				}
+					// this should be a rare case and we should do the change in the associated map of workloads
+					for _, ownerRef := range pod.OwnerReferences {
+						if ownerRef.Kind != "Pod" {
+							break
+						}
+						klog.InfoS("Pod owner references", "ownerRef", ownerRef.Name, "ownerRefUID", ownerRef.UID)
+						podHash, ok := pod.Labels["pod-template-hash"]
+						if ownerRef.Kind != "Pod" && ok && strings.Contains(ownerRef.Name, podHash) && cacheWorkload.WorkloadName == podName {
+							cacheWorkload.OwnerReferenceName = ownerRef.Name
+							cacheWorkload.OwnerReferenceKind = ownerRef.Kind
+							cacheWorkload.OwnerReferenceUID = string(ownerRef.UID)
+							cacheWorkload.WorkloadName = strings.ReplaceAll(ownerRef.Name, podHash, "")
+							cacheWorkload.WorkloadName = strings.TrimRight(cacheWorkload.WorkloadName, "-")
+							klog.InfoS("Changing the workload kind and name in the cache:", "workloadName", cacheWorkload.WorkloadName, "workloadKind", cacheWorkload.OwnerReferenceKind)
+							shouldUpdateCache = true
+							break
+						}
+					}*/
 			}
 			// erase all the pods which aren't longer in the cluster
 			// todo: add a check to do this only if we're in the "online" mode
 			for podName := range sliceOfPodsToDelete {
 				klog.InfoS("Removing pod from the cache", "pod", podName)
-				delete(cacheWorkload.CachedPods, podName)
+				delete(spCache.Spec.SpcFilesWorkloads.WorkloadsMap[cacheWorkload.WorkloadName].CachedPods, podName)
 			}
 
 			for _, cacheWorkload := range cacheSpcWorkloadFiles.WorkloadsMap {
@@ -263,12 +264,20 @@ func (r *SecretProviderCacheReconciler) Reconcile(ctx context.Context, req ctrl.
 					warning = true
 				}
 			}
+
+			if shouldUpdateCache {
+				klog.InfoS("Updating the cache", "cache name", spCache.Name)
+				err = r.writer.Update(ctx, &spCache)
+				if err != nil {
+					return ctrl.Result{RequeueAfter: 10 * time.Second}, err
+				}
+			}
 		}
 
-		// erase all the workloads which aren't longer in the cluster
-		for podAsWorkloadName := range mapOfPodsToDelete {
-			klog.InfoS("Removing workload from the cache", "workload", podAsWorkloadName)
-			delete(cacheSpcWorkloadFiles.WorkloadsMap, podAsWorkloadName)
+		// erase all the workloads which aren't in the cluster
+		for workloadName := range mapOfPodsToDelete {
+			klog.InfoS("Removing workload from the cache", "workload", workloadName)
+			delete(spCache.Spec.SpcFilesWorkloads.WorkloadsMap, workloadName)
 		}
 
 		if shouldUpdateCache {
