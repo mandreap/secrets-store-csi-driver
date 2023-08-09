@@ -110,7 +110,7 @@ func (in *CacheWorkload) DeepCopyInto(out *CacheWorkload) {
 	*out = *in
 	if in.CachedPods != nil {
 		in, out := &in.CachedPods, &out.CachedPods
-		*out = make(map[string]EmptyStruct, len(*in))
+		*out = make(map[string]string, len(*in))
 		for key, val := range *in {
 			(*out)[key] = val
 		}

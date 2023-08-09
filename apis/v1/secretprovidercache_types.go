@@ -37,11 +37,11 @@ type CacheFile struct {
 }
 type EmptyStruct struct{}
 type CacheWorkload struct {
-	WorkloadName       string                 `json:"workloadName,omitempty"`
-	OwnerReferenceUID  string                 `json:"workloadUID,omitempty"`
-	OwnerReferenceName string                 `json:"ownerReferenceName,omitempty"`
-	OwnerReferenceKind string                 `json:"ownerReferenceKind,omitempty"`
-	CachedPods         map[string]EmptyStruct `json:"cachedPods,omitempty"`
+	WorkloadName       string            `json:"workloadName,omitempty"`
+	OwnerReferenceUID  string            `json:"workloadUID,omitempty"`
+	OwnerReferenceName string            `json:"ownerReferenceName,omitempty"`
+	OwnerReferenceKind string            `json:"ownerReferenceKind,omitempty"`
+	CachedPods         map[string]string `json:"cachedPods,omitempty"`
 }
 
 type CacheSpcWorkloadFiles struct {
