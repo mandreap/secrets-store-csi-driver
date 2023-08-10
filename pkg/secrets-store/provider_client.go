@@ -255,9 +255,20 @@ func MountContent(ctx context.Context, client v1alpha1.CSIDriverProviderClient, 
 	}
 
 	resp, err := client.Mount(ctx, req)
+	klog.InfoS("received error from Mount", "errCode", err)
 	if err != nil {
 		if isMaxRecvMsgSizeError(err) {
 			klog.ErrorS(err, "Set --max-call-recv-msg-size to configure larger maximum size in bytes of gRPC response")
+		}
+
+		// If the provider is unavailable, try to mount from cache
+		if isUnavailableError(err) {
+			klog.Info("Mounting from CACHE")
+			objectVersions := make(map[string]string)
+			if err = mountFromSecretProviderCache(ctx, providerClient.c, providerClient.r, serviceAccountName, podName, namespace, spcName, nodeID, nodeRefKey, targetPath); err != nil {
+				klog.Infof("failed to mount from secret provider CACHE for pod %s/%s, err: %v", namespace, podName, err)
+				return objectVersions, fmt.Sprintf("failed to mount from secret provider CACHE for pod %s/%s, err: %v", namespace, podName, err), err
+			}
 		}
 		return nil, internalerrors.GRPCProviderError, err
 	}
@@ -306,7 +317,13 @@ func MountContent(ctx context.Context, client v1alpha1.CSIDriverProviderClient, 
 		klog.Infof("failed to create secret provider CACHE for pod %s/%s, err: %v", namespace, podName, err)
 		return objectVersions, fmt.Sprintf("failed to create secret provider CACHE for pod %s/%s, err: %v", namespace, podName, err), err
 	}
+
 	return objectVersions, "", nil
+}
+
+func mountFromSecretProviderCache(ctx context.Context, client client.Client, reader client.Reader, serviceAccountName, podName, namespace, spcName, nodeID, nodeRefKey, targetPath string) error {
+
+	return errors.New("Mounting from cache not implemented yet")
 }
 
 // Version calls the client's Version() RPC
@@ -321,6 +338,18 @@ func Version(ctx context.Context, client v1alpha1.CSIDriverProviderClient) (stri
 		return "", err
 	}
 	return resp.RuntimeVersion, nil
+}
+
+func isUnavailableError(err error) bool {
+
+	if status.Code(err) == codes.Unavailable {
+		klog.InfoS("provider unavailable", "err", err)
+		return true
+	}
+
+	klog.InfoS("provider is avaialble", "err", err)
+
+	return false
 }
 
 // isMaxRecvMsgSizeError checks if the grpc error is of ResourceExhausted type and
