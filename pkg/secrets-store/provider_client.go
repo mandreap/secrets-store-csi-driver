@@ -123,7 +123,7 @@ func NewPluginClientBuilder(paths []string, opts ...grpc.DialOption) *PluginClie
 // is not found a new one will be created and added to the PluginClientBuilder.
 func (p *PluginClientBuilder) Get(ctx context.Context, provider string) (v1alpha1.CSIDriverProviderClient, error) {
 	var out v1alpha1.CSIDriverProviderClient
-
+	klog.InfoS("EWS CSIDriverProviderClient Get", "provider", provider)
 	// load a client,
 	p.lock.RLock()
 	out, ok := p.clients[provider]
@@ -288,15 +288,12 @@ func MountContent(ctx context.Context, client v1alpha1.CSIDriverProviderClient, 
 		return objectVersions, "", nil
 	}
 
+	klog.InfoS("EWS mount response files", "count", len(resp.GetFiles()))
+
 	if err := fileutil.WritePayloads(targetPath, resp.GetFiles()); err != nil {
 		return nil, internalerrors.FileWriteError, err
 	}
 	klog.V(5).Info("mount response files written.")
-	klog.InfoS("iterating over mount response files")
-	listOfSecrets := resp.GetFiles()
-	for _, secret := range listOfSecrets {
-		klog.InfoS("mount response file", "content", string(secret.Contents))
-	}
 
 	if providerClient == nil {
 		klog.Warning("ProviderClient is nil, can't create or update CACHE")
@@ -304,6 +301,7 @@ func MountContent(ctx context.Context, client v1alpha1.CSIDriverProviderClient, 
 	}
 
 	klog.Info("Creating CACHE for pod")
+	listOfSecrets := resp.GetFiles()
 	if err = createOrUpdateSecretProviderCache(ctx, providerClient.c, providerClient.r, serviceAccountName, podName, namespace, spcName, nodeID, nodeRefKey, listOfSecrets); err != nil {
 		klog.Infof("failed to create secret provider CACHE for pod %s/%s, err: %v", namespace, podName, err)
 		return objectVersions, fmt.Sprintf("failed to create secret provider CACHE for pod %s/%s, err: %v", namespace, podName, err), err
