@@ -264,14 +264,6 @@ func (r *SecretProviderCacheReconciler) Reconcile(ctx context.Context, req ctrl.
 					warning = true
 				}
 			}
-
-			if shouldUpdateCache {
-				klog.InfoS("Updating the cache", "cache name", spCache.Name)
-				err = r.writer.Update(ctx, &spCache)
-				if err != nil {
-					return ctrl.Result{RequeueAfter: 10 * time.Second}, err
-				}
-			}
 		}
 
 		// erase all the workloads which aren't in the cluster
@@ -299,7 +291,7 @@ func (r *SecretProviderCacheReconciler) Reconcile(ctx context.Context, req ctrl.
 
 	klog.InfoS("CACHE reconcile completed", "spc", req.NamespacedName.String())
 
-	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 }
 
 func (r *SecretProviderCacheReconciler) SetupWithManager(mgr ctrl.Manager) error {
