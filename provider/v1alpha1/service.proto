@@ -19,6 +19,8 @@ syntax = "proto3";
 package v1alpha1;
 option go_package = "./provider/v1alpha1";
 
+message Void {} 
+
 service CSIDriverProvider {
     // Version returns the runtime name and runtime version of the Secrets Store CSI Driver Provider
     // TODO (aramase) This will be used later to ensure the provider the driver is talking to supports
@@ -27,6 +29,17 @@ service CSIDriverProvider {
 
     // Execute mount operation in provider
     rpc Mount(MountRequest) returns (MountResponse) {}
+
+    // Set simultaion mode
+    rpc SetSimulationMode(BoolValue) returns (Void) {}
+
+    // Get simulation mode
+    rpc GetSimulationMode(Void) returns (BoolValue) {}
+}
+
+message BoolValue {
+  // The bool value.
+  bool value = 1;
 }
 
 message VersionRequest {

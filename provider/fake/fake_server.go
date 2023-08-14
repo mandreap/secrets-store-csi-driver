@@ -137,3 +137,11 @@ func (m *MockCSIProviderServer) Version(ctx context.Context, req *v1alpha1.Versi
 		RuntimeVersion: "0.0.10",
 	}, nil
 }
+
+func (m *MockCSIProviderServer) GetSimulationMode(context.Context, *v1alpha1.Void) (*v1alpha1.BoolValue, error) {
+	return &v1alpha1.BoolValue{Value: false}, nil
+}
+
+func (m *MockCSIProviderServer) SetSimulationMode(context.Context, *v1alpha1.BoolValue) (*v1alpha1.Void, error) {
+	return &v1alpha1.Void{}, nil
+}
