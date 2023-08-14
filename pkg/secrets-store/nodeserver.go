@@ -247,7 +247,6 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 	mounted = true
 	var objectVersions map[string]string
-	klog.InfoS("secrets str", "secretsStr", secretStr)
 	if objectVersions, errorReason, err = ns.mountSecretsStoreObjectContent(ctx, providerName, string(parametersStr), string(secretStr), targetPath, string(permissionStr), ns.client, ns.reader, serviceAccountName, podName, podNamespace, secretProviderClass, nodeRefKey, ns.nodeID); err != nil {
 		klog.ErrorS(err, "failed to mount secrets store object content", "pod", klog.ObjectRef{Namespace: podNamespace, Name: podName})
 		return nil, fmt.Errorf("failed to mount secrets store objects for pod %s/%s, err: %w", podNamespace, podName, err)

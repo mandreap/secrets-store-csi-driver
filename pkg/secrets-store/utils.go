@@ -90,9 +90,9 @@ func getSecretProviderItem(ctx context.Context, c client.Client, name, namespace
 	return spc, nil
 }
 
-func addMissingSecretsFiles(file *[]*secretsstorev1.CacheFile, fileSecrets []*v1alpha1.File) bool {
-	if file == nil {
-		klog.InfoS("File is nil: can't add file secrets to cacheFile")
+func addMissingSecretsFiles(file *[]*secretsstorev1.CacheFile, fileSecrets []*v1alpha1.File, cacheObjectVersions *[]*secretsstorev1.ObjectVersion, objectVersions []*v1alpha1.ObjectVersion) bool {
+	if file == nil || cacheObjectVersions == nil {
+		klog.InfoS("File or ObjectVersions is nil: can't add file secrets to cacheFile")
 		return true
 	}
 	var shouldUpdate bool = false
@@ -105,10 +105,22 @@ func addMissingSecretsFiles(file *[]*secretsstorev1.CacheFile, fileSecrets []*v1
 			}
 		}
 		if !found {
+			// TODO: rethink this
+			if len(objectVersions) > 0 && cacheObjectVersions != nil {
+				for _, objectVersion := range objectVersions {
+					(*cacheObjectVersions) = append(*cacheObjectVersions, &secretsstorev1.ObjectVersion{
+						Id:      objectVersion.Id,
+						Version: objectVersion.Version,
+					})
+				}
+			}
+
+			// add the file to the cache
 			*file = append(*file, &secretsstorev1.CacheFile{
-				Path:     fileSecret.Path,
-				Mode:     fileSecret.Mode,
-				Contents: fileSecret.Contents,
+				Path:          fileSecret.Path,
+				Mode:          fileSecret.Mode,
+				Contents:      fileSecret.Contents,
+				ObjectVersion: *cacheObjectVersions,
 			})
 			shouldUpdate = true
 		}
@@ -116,28 +128,42 @@ func addMissingSecretsFiles(file *[]*secretsstorev1.CacheFile, fileSecrets []*v1
 	return shouldUpdate
 }
 
-func addFileSecretsToCacheFile(cacheFile *[]*secretsstorev1.CacheFile, fileSecrets []*v1alpha1.File) {
-	if cacheFile == nil {
-		klog.InfoS("cacheFile is nil: can't add file secrets to cacheFile")
+func addFileSecretsToCacheFile(cacheFile *[]*secretsstorev1.CacheFile, fileSecrets []*v1alpha1.File, cacheObjectVersions *[]*secretsstorev1.ObjectVersion, objectVersions []*v1alpha1.ObjectVersion) {
+	klog.InfoS("adding file secrets to cacheFile", "fileSecrets", fileSecrets, "objectVersions", objectVersions)
+	if cacheFile == nil || cacheObjectVersions == nil {
+		klog.InfoS("cacheFile or cacheObjectVersions is nil: can't add file secrets to cacheFile")
 		return
 	}
+
+	if len(objectVersions) > 0 && cacheObjectVersions != nil {
+		for _, objectVersion := range objectVersions {
+			(*cacheObjectVersions) = append(*cacheObjectVersions, &secretsstorev1.ObjectVersion{
+				Id:      objectVersion.Id,
+				Version: objectVersion.Version,
+			})
+		}
+	}
+
 	for _, file := range fileSecrets {
 		(*cacheFile) = append(*cacheFile, &secretsstorev1.CacheFile{
-			Path:     file.Path,
-			Mode:     file.Mode,
-			Contents: file.Contents,
+			Path:          file.Path,
+			Mode:          file.Mode,
+			Contents:      file.Contents,
+			ObjectVersion: *cacheObjectVersions,
 		})
 	}
 }
 
 // createOrUpdateSecretProviderCache creates secret provider cache if it doesn't exist.
 // if the secret provider cache already exists, it updates the status and owner references.
-func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, reader client.Reader, serviceAccountName, podName, namespace, spcName, nodeID, nodeRefKey string, fileSecrets []*v1alpha1.File) error {
-	spCacheName := namespace + "-" + serviceAccountName + "-" + nodeRefKey + spcName
+func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, reader client.Reader, serviceAccountName, podName, namespace, spcName, nodeID, nodeRefKey string, fileSecrets []*v1alpha1.File, objectVersions []*v1alpha1.ObjectVersion) error {
+	spCacheName := namespace + spcName
 	klog.InfoS("creating secret provider cache", "spCache", spCacheName)
 
+	// TODO: add object versions to cache
 	secretFiles := &[]*secretsstorev1.CacheFile{}
-	addFileSecretsToCacheFile(secretFiles, fileSecrets)
+	cacheObjectVersions := &[]*secretsstorev1.ObjectVersion{}
+	addFileSecretsToCacheFile(secretFiles, fileSecrets, cacheObjectVersions, objectVersions)
 
 	// retrieve the pod and try to get its owners
 	pod := &corev1.Pod{}
@@ -236,7 +262,7 @@ func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, rea
 		}
 	}()
 
-	var shouldUpdateCache bool = addMissingSecretsFiles(spCacheUpdate.Spec.SpcFilesWorkloads.SecretFiles, fileSecrets)
+	var shouldUpdateCache bool = addMissingSecretsFiles(spCacheUpdate.Spec.SpcFilesWorkloads.SecretFiles, fileSecrets, cacheObjectVersions, objectVersions)
 	// TODO: remove these 2 -> should never happen
 	if serviceAccountName != spCacheUpdate.Spec.ServiceAccountName {
 		klog.InfoS("ServiceAccountName is different, updating the cache:", "serviceAccountName", serviceAccountName)
