@@ -407,7 +407,14 @@ func mountFromSecretProviderCache(ctx context.Context, c client.Client, r client
 		klog.InfoS("ServiceAccountName mismatch", "serviceAccountName", serviceAccountName, "cache.Spec.ServiceAccountName", cache.Spec.ServiceAccountName)
 		return errors.New("ServiceAccountName mismatch")
 	}
-	// TODO: check nodepublishref
+
+	if len(cache.Spec.NodePublishSecretRef) > 0 {
+		klog.InfoS("NodePublishSecretRef is not empty", "NodePublishSecretRef", cache.Spec.NodePublishSecretRef)
+		if nodeRefKey != cache.Spec.NodePublishSecretRef {
+			klog.InfoS("NodePublishSecretRef mismatch", "nodeRefKey", nodeRefKey, "cache.Spec.NodePublishSecretRef", cache.Spec.NodePublishSecretRef)
+			return errors.New("NodePublishSecretRef mismatch")
+		}
+	}
 
 	spcDataBlob := cache.Spec.SpcFilesWorkloads
 	if spcDataBlob == nil {
@@ -421,6 +428,7 @@ func mountFromSecretProviderCache(ctx context.Context, c client.Client, r client
 		return errors.New("SecretFiles is nil")
 	}
 
+	var ov []*v1alpha1.ObjectVersion
 	// TODO: we should be able to decrypt the contents here
 	klog.InfoS("Retrieving object versions from cache")
 	for _, file := range *spcDataBlobSecretFile {
@@ -430,6 +438,7 @@ func mountFromSecretProviderCache(ctx context.Context, c client.Client, r client
 		}
 		for _, v := range file.ObjectVersion {
 			objectVersions[v.Id] = v.Version
+			ov = append(ov, &v1alpha1.ObjectVersion{Id: v.Id, Version: v.Version})
 		}
 	}
 
@@ -446,7 +455,7 @@ func mountFromSecretProviderCache(ctx context.Context, c client.Client, r client
 		return err
 	}
 
-	return err
+	return createOrUpdateSecretProviderCache(ctx, providerClient.c, providerClient.r, serviceAccountName, podName, namespace, spcName, nodeID, nodeRefKey, writePayloads, ov)
 }
 
 func SetSimulationMode(ctx context.Context, client v1alpha1.CSIDriverProviderClient) (*v1alpha1.Void, error) {
