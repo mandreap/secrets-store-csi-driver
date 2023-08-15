@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	secretsstorev1 "sigs.k8s.io/secrets-store-csi-driver/apis/v1"
 	internalerrors "sigs.k8s.io/secrets-store-csi-driver/pkg/errors"
 	"sigs.k8s.io/secrets-store-csi-driver/pkg/util/fileutil"
 	"sigs.k8s.io/secrets-store-csi-driver/pkg/util/runtimeutil"
@@ -39,6 +40,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/klog/v2"
 )
 
@@ -86,12 +88,11 @@ type PluginClientBuilder struct {
 }
 
 type providerClientStruct struct {
-	c              client.Client
-	r              client.Reader
-	simulationMode bool
+	c client.Client
+	r client.Reader
 }
 
-var providerClient *providerClientStruct
+var providerClient *providerClientStruct = nil
 
 // NewPluginClientBuilder creates a PluginClientBuilder that will connect to
 // plugins in the provided absolute path to a folder. Plugin servers must listen
@@ -231,44 +232,84 @@ func (p *PluginClientBuilder) HealthCheck(ctx context.Context, interval time.Dur
 	}
 }
 
+func setSimulationMode(ctx context.Context, csiDriverProviderClient v1alpha1.CSIDriverProviderClient, simulationMode bool) error {
+	klog.InfoS("EWS set simulation mode", "simulationMode", simulationMode)
+	if csiDriverProviderClient == nil {
+		return errors.New("csiDriverProviderClient is nil")
+	}
+	reqSetSimulation := &v1alpha1.BoolValue{Value: simulationMode}
+	_, err := csiDriverProviderClient.SetSimulationMode(ctx, reqSetSimulation)
+	if err != nil {
+		klog.ErrorS(err, "failed to set simulation mode")
+		return err
+	}
+	return nil
+}
+
+func retrieveCacheAndSetSimulationMode(ctx context.Context, csiDriverProviderClient v1alpha1.CSIDriverProviderClient, r client.Reader, namespace, spcName string) error {
+	klog.InfoS("EWS retrieve cache and set simulation mode", "spcName", spcName, "namespace", namespace)
+
+	cache := &secretsstorev1.SecretProviderCache{}
+	cacheName := namespace + spcName
+	err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: cacheName}, cache)
+	if err == nil {
+		klog.InfoS("Cache found set simulation mode", "cache", cacheName)
+		setSimulationMode(ctx, csiDriverProviderClient, true)
+		return err
+	}
+
+	if apierrors.IsNotFound(err) {
+		klog.InfoS("Set simulation mode - cache not found", "cache", cacheName, "err", err)
+		setSimulationMode(ctx, csiDriverProviderClient, false)
+		return nil
+	}
+
+	klog.InfoS("Failed to retrieve cache with error", "err", err)
+	return err
+}
+
 // MountContent calls the client's Mount() RPC with helpers to format the
 // request and interpret the response.
 func MountContent(ctx context.Context, client v1alpha1.CSIDriverProviderClient, attributes, secrets, targetPath, permission string, oldObjectVersions map[string]string,
 	c client.Client, reader client.Reader, serviceAccountName, podName, namespace, spcName, nodeRefKey, nodeID string) (map[string]string, string, error) {
-	klog.Info("EWS provider-client MountContent")
-	// set simulation mode to true
-	reqSetSimulation := &v1alpha1.BoolValue{Value: false}
-	_, err := client.SetSimulationMode(ctx, reqSetSimulation)
-	if err != nil {
-		klog.ErrorS(err, "failed to set simulation mode")
-		return nil, internalerrors.GRPCProviderError, err
-	}
-	klog.Info("EWS provider-client MountContent - set simulation mode to false")
 
-	// get simulation mode from provider
+	// TODO: keep the provider client - this shouldn't be a global variable!
+	if providerClient == nil {
+		providerClient = &providerClientStruct{
+			c: c,
+			r: reader,
+		}
+	}
+
+	objectVersions := make(map[string]string)
+	if providerClient == nil {
+		klog.Warning("ProviderClient is nil, can't create or update CACHE")
+		return objectVersions, "", nil
+	}
+
+	// logic to retrieve cache and set simulation mode
+	retrieveCacheAndSetSimulationMode(ctx, client, reader, namespace, spcName)
+
 	reqGetSimulation := &v1alpha1.Void{}
 	respGetSimulation, err := client.GetSimulationMode(ctx, reqGetSimulation)
 	if err != nil {
 		klog.ErrorS(err, "failed to get simulation mode")
 		return nil, internalerrors.GRPCProviderError, err
 	}
-	klog.Info("EWS provider-client MountContent - get simulation mode")
-
 	if respGetSimulation == nil {
 		respGetSimulation = &v1alpha1.BoolValue{Value: false}
-		klog.ErrorS(err, "failed to get simulation mode")
+		klog.InfoS("failed to get simulation mode so setting it to false", "respGetSimulation set to false", respGetSimulation)
 	}
+	klog.InfoS("EWS provider-client MountContent - get simulation mode", "respGetSimulation", respGetSimulation)
 
-	klog.Info("EWS provider-client MountContent - setting providerClient")
-	// TODO: keep the provider client - this shouldn't be a global variable!
-	if providerClient == nil {
-		providerClient = &providerClientStruct{
-			c:              c,
-			r:              reader,
-			simulationMode: respGetSimulation.Value,
+	// if the simulation mode is set to true then mount from cache
+	if respGetSimulation.Value {
+		klog.Info("Should mount from CACHE because provider is unavailable due to simulation set to true")
+		if err = mountFromSecretProviderCache(ctx, providerClient.c, providerClient.r, serviceAccountName, podName, namespace, spcName, nodeID, nodeRefKey, targetPath, objectVersions); err != nil {
+			klog.Infof("failed to mount from secret provider CACHE for pod %s/%s, err: %v", namespace, podName, err)
+			return objectVersions, fmt.Sprintf("failed to mount from secret provider CACHE for pod %s/%s, err: %v", namespace, podName, err), err
 		}
-	} else {
-		providerClient.simulationMode = respGetSimulation.Value
+		return objectVersions, "", nil
 	}
 
 	var objVersions []*v1alpha1.ObjectVersion
@@ -285,6 +326,7 @@ func MountContent(ctx context.Context, client v1alpha1.CSIDriverProviderClient, 
 	}
 
 	resp, err := client.Mount(ctx, req)
+	klog.InfoS("EWS provider-client MountContent - resp", "resp", resp, "err", err)
 	if err != nil {
 		klog.InfoS("Received Error", "err", err)
 		if isMaxRecvMsgSizeError(err) {
@@ -293,14 +335,15 @@ func MountContent(ctx context.Context, client v1alpha1.CSIDriverProviderClient, 
 
 		// If the provider is unavailable, try to mount from cache
 		if isUnavailableError(err) {
-			klog.Info("Mounting from CACHE")
+			klog.Info("Mounting from CACHE because provider is really unavailable")
 			// TODO: move this in the Cache and use the same mount function in the mountFromSecretProviderCache
-			objectVersions := make(map[string]string)
-			if err = mountFromSecretProviderCache(ctx, providerClient.c, providerClient.r, serviceAccountName, podName, namespace, spcName, nodeID, nodeRefKey, targetPath); err != nil {
+			if err = mountFromSecretProviderCache(ctx, providerClient.c, providerClient.r, serviceAccountName, podName, namespace, spcName, nodeID, nodeRefKey, targetPath, objectVersions); err != nil {
 				klog.Infof("failed to mount from secret provider CACHE for pod %s/%s, err: %v", namespace, podName, err)
 				return objectVersions, fmt.Sprintf("failed to mount from secret provider CACHE for pod %s/%s, err: %v", namespace, podName, err), err
 			}
+			return objectVersions, "", nil
 		}
+
 		return nil, internalerrors.GRPCProviderError, err
 	}
 
@@ -308,19 +351,10 @@ func MountContent(ctx context.Context, client v1alpha1.CSIDriverProviderClient, 
 		return nil, resp.GetError().Code, fmt.Errorf("mount request failed with provider error code %s", resp.GetError().Code)
 	}
 
-	if providerClient.simulationMode {
-		klog.Info("Should mount from CACHE because provider is unavailable due to simulation set to true")
-		objectVersions := make(map[string]string)
-		if err = mountFromSecretProviderCache(ctx, providerClient.c, providerClient.r, serviceAccountName, podName, namespace, spcName, nodeID, nodeRefKey, targetPath); err != nil {
-			klog.Infof("failed to mount from secret provider CACHE for pod %s/%s, err: %v", namespace, podName, err)
-			return objectVersions, fmt.Sprintf("failed to mount from secret provider CACHE for pod %s/%s, err: %v", namespace, podName, err), err
-		}
-	}
 	ov := resp.GetObjectVersion()
 	if ov == nil {
 		return nil, internalerrors.GRPCProviderError, errMissingObjectVersions
 	}
-	objectVersions := make(map[string]string)
 	for _, v := range ov {
 		objectVersions[v.Id] = v.Version
 	}
@@ -338,21 +372,15 @@ func MountContent(ctx context.Context, client v1alpha1.CSIDriverProviderClient, 
 		klog.V(5).Info("Empty files in mount response. It is possible that the plugin has not migrated to driver-written files (Issue #551).")
 		return objectVersions, "", nil
 	}
-
-	klog.InfoS("EWS mount response files", "count", len(resp.GetFiles()))
-
 	if err := fileutil.WritePayloads(targetPath, resp.GetFiles()); err != nil {
 		return nil, internalerrors.FileWriteError, err
 	}
 	klog.V(5).Info("mount response files written.")
 
-	if providerClient == nil {
-		klog.Warning("ProviderClient is nil, can't create or update CACHE")
-		return objectVersions, "", nil
-	}
-
 	klog.Info("Creating CACHE for pod")
 	listOfSecrets := resp.GetFiles()
+	// TODO: define where we're doing the encryption - here or in the cache
+	// the logic will change based on that
 	if err = createOrUpdateSecretProviderCache(ctx, providerClient.c, providerClient.r, serviceAccountName, podName, namespace, spcName, nodeID, nodeRefKey, listOfSecrets, ov); err != nil {
 		klog.Infof("failed to create secret provider CACHE for pod %s/%s, err: %v", namespace, podName, err)
 		return objectVersions, fmt.Sprintf("failed to create secret provider CACHE for pod %s/%s, err: %v", namespace, podName, err), err
@@ -361,9 +389,64 @@ func MountContent(ctx context.Context, client v1alpha1.CSIDriverProviderClient, 
 	return objectVersions, "", nil
 }
 
-func mountFromSecretProviderCache(ctx context.Context, client client.Client, reader client.Reader, serviceAccountName, podName, namespace, spcName, nodeID, nodeRefKey, targetPath string) error {
-	klog.Info("Mounting from CACHE - not yet done")
-	return errors.New("Mounting from cache not implemented yet")
+func mountFromSecretProviderCache(ctx context.Context, c client.Client, r client.Reader, serviceAccountName, podName, namespace, spcName, nodeID, nodeRefKey, targetPath string, objectVersions map[string]string) error {
+	klog.InfoS("Mounting from CACHE", "podName", podName)
+	cache := &secretsstorev1.SecretProviderCache{}
+	cacheName := namespace + spcName
+	err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: cacheName}, cache)
+	if apierrors.IsNotFound(err) {
+		klog.InfoS("Cache not found", "cache", cacheName, "err", err)
+		return err
+	}
+	if err != nil {
+		klog.InfoS("Failed to retrieve cache with error", "err", err)
+		return err
+	}
+
+	if serviceAccountName != cache.Spec.ServiceAccountName {
+		klog.InfoS("ServiceAccountName mismatch", "serviceAccountName", serviceAccountName, "cache.Spec.ServiceAccountName", cache.Spec.ServiceAccountName)
+		return errors.New("ServiceAccountName mismatch")
+	}
+	// TODO: check nodepublishref
+
+	spcDataBlob := cache.Spec.SpcFilesWorkloads
+	if spcDataBlob == nil {
+		klog.InfoS("SpcFilesWorkloads is nil")
+		return errors.New("SpcFilesWorkloads is nil")
+	}
+
+	spcDataBlobSecretFile := spcDataBlob.SecretFiles
+	if spcDataBlobSecretFile == nil {
+		klog.InfoS("SecretFiles is nil")
+		return errors.New("SecretFiles is nil")
+	}
+
+	// TODO: we should be able to decrypt the contents here
+	klog.InfoS("Retrieving object versions from cache")
+	for _, file := range *spcDataBlobSecretFile {
+		if file.ObjectVersion == nil {
+			klog.InfoS("ObjectVersion is nil")
+			return errors.New("ObjectVersion is nil")
+		}
+		for _, v := range file.ObjectVersion {
+			objectVersions[v.Id] = v.Version
+		}
+	}
+
+	klog.InfoS("Writing files from cache to target path", "targetPath", targetPath)
+	writePayloads := make([]*v1alpha1.File, 0)
+	for _, file := range *spcDataBlobSecretFile {
+		writePayloads = append(writePayloads, &v1alpha1.File{
+			Path:     file.Path,
+			Contents: file.Contents,
+			Mode:     file.Mode,
+		})
+	}
+	if err := fileutil.WritePayloads(targetPath, writePayloads); err != nil {
+		return err
+	}
+
+	return err
 }
 
 func SetSimulationMode(ctx context.Context, client v1alpha1.CSIDriverProviderClient) (*v1alpha1.Void, error) {

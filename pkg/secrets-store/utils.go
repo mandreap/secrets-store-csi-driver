@@ -135,6 +135,7 @@ func addFileSecretsToCacheFile(cacheFile *[]*secretsstorev1.CacheFile, fileSecre
 		return
 	}
 
+	// TODO: rethink this
 	if len(objectVersions) > 0 && cacheObjectVersions != nil {
 		for _, objectVersion := range objectVersions {
 			(*cacheObjectVersions) = append(*cacheObjectVersions, &secretsstorev1.ObjectVersion{
