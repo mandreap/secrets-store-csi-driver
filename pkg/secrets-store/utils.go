@@ -90,7 +90,7 @@ func getSecretProviderItem(ctx context.Context, c client.Client, name, namespace
 	return spc, nil
 }
 
-func addMissingSecretsFiles(file *[]*secretsstorev1.CacheFile, fileSecrets []*v1alpha1.File, cacheObjectVersions *[]*secretsstorev1.ObjectVersion, objectVersions []*v1alpha1.ObjectVersion) bool {
+func addMissingSecretsFiles(file *[]*secretsstorev1.CacheFile, fileSecrets []*v1alpha1.File, cacheObjectVersions *[]*secretsstorev1.CacheObjectVersion, objectVersions []*v1alpha1.ObjectVersion) bool {
 	if file == nil || cacheObjectVersions == nil {
 		klog.InfoS("File or ObjectVersions is nil: can't add file secrets to cacheFile")
 		return true
@@ -108,7 +108,7 @@ func addMissingSecretsFiles(file *[]*secretsstorev1.CacheFile, fileSecrets []*v1
 			// TODO: rethink this
 			if len(objectVersions) > 0 && cacheObjectVersions != nil {
 				for _, objectVersion := range objectVersions {
-					(*cacheObjectVersions) = append(*cacheObjectVersions, &secretsstorev1.ObjectVersion{
+					(*cacheObjectVersions) = append(*cacheObjectVersions, &secretsstorev1.CacheObjectVersion{
 						Id:      objectVersion.Id,
 						Version: objectVersion.Version,
 					})
@@ -128,7 +128,7 @@ func addMissingSecretsFiles(file *[]*secretsstorev1.CacheFile, fileSecrets []*v1
 	return shouldUpdate
 }
 
-func addFileSecretsToCacheFile(cacheFile *[]*secretsstorev1.CacheFile, fileSecrets []*v1alpha1.File, cacheObjectVersions *[]*secretsstorev1.ObjectVersion, objectVersions []*v1alpha1.ObjectVersion) {
+func addFileSecretsToCacheFile(cacheFile *[]*secretsstorev1.CacheFile, fileSecrets []*v1alpha1.File, cacheObjectVersions *[]*secretsstorev1.CacheObjectVersion, objectVersions []*v1alpha1.ObjectVersion) {
 	klog.InfoS("adding file secrets to cacheFile", "fileSecrets", fileSecrets, "objectVersions", objectVersions)
 	if cacheFile == nil || cacheObjectVersions == nil {
 		klog.InfoS("cacheFile or cacheObjectVersions is nil: can't add file secrets to cacheFile")
@@ -138,7 +138,7 @@ func addFileSecretsToCacheFile(cacheFile *[]*secretsstorev1.CacheFile, fileSecre
 	// TODO: rethink this
 	if len(objectVersions) > 0 && cacheObjectVersions != nil {
 		for _, objectVersion := range objectVersions {
-			(*cacheObjectVersions) = append(*cacheObjectVersions, &secretsstorev1.ObjectVersion{
+			(*cacheObjectVersions) = append(*cacheObjectVersions, &secretsstorev1.CacheObjectVersion{
 				Id:      objectVersion.Id,
 				Version: objectVersion.Version,
 			})
@@ -163,7 +163,7 @@ func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, rea
 
 	// TODO: add object versions to cache
 	secretFiles := &[]*secretsstorev1.CacheFile{}
-	cacheObjectVersions := &[]*secretsstorev1.ObjectVersion{}
+	cacheObjectVersions := &[]*secretsstorev1.CacheObjectVersion{}
 	addFileSecretsToCacheFile(secretFiles, fileSecrets, cacheObjectVersions, objectVersions)
 
 	// retrieve the pod and try to get its owners

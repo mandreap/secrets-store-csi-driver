@@ -28,15 +28,8 @@ type Error struct {
 	Code string `json:"code,omitempty"`
 }
 
-type ObjectVersion struct {
-	// Id is the object UID that is fetched from external secrets store
-	// The Id should be unique. If multiple objects fetched from the secrets
-	// store contain the same name, the provider should return a uid. This will
-	// be populated in the SecretProviderClassPodStatus and sent back to the
-	// provider as part of rotation reconcile
-	// Example: secret/secret1, key/secret1, projects/$PROJECT_ID/secrets/secret1
-	Id string `json:"id,omitempty"`
-	// Version is the object version that is fetched from external secrets store
+type CacheObjectVersion struct {
+	Id      string `json:"id,omitempty"`
 	Version string `json:"version,omitempty"`
 }
 
@@ -50,9 +43,9 @@ type CacheFile struct {
 	// Must be a decimal value between 0 and 511.
 	Mode int32 `json:"mode,omitempty"`
 	// The file contents.
-	Contents      []byte           `json:"contents,omitempty"`
-	ObjectVersion []*ObjectVersion `json:"object_version,omitempty"`
-	Error         *Error           `json:"error,omitempty"`
+	Contents      []byte                `json:"contents,omitempty"`
+	ObjectVersion []*CacheObjectVersion `json:"object_version,omitempty"`
+	Error         *Error                `json:"error,omitempty"`
 }
 
 type CacheWorkload struct {

@@ -87,8 +87,7 @@ type Reconciler struct {
 // TODO (aramase) remove this as part of https://github.com/kubernetes-sigs/secrets-store-csi-driver/issues/585
 
 // NewReconciler returns a new reconciler for rotation
-func NewReconciler(reader client.Reader,
-	// TODO: we need a writer to write to the cache
+func NewReconciler(client client.Reader,
 	s *runtime.Scheme,
 	rotationPollInterval time.Duration,
 	providerClients *secretsstore.PluginClientBuilder,
@@ -113,7 +112,6 @@ func NewReconciler(reader client.Reader,
 	}
 
 	return &Reconciler{
-		// TODO: we need a writer to write to the cache
 		rotationPollInterval: rotationPollInterval,
 		providerClients:      providerClients,
 		reporter:             sr,
@@ -122,7 +120,7 @@ func NewReconciler(reader client.Reader,
 		kubeClient:           kubeClient,
 		crdClient:            crdClient,
 		// cache store Pod,
-		cache:       reader,
+		cache:       client,
 		secretStore: secretStore,
 		tokenClient: tokenClient,
 	}, nil
@@ -257,7 +255,6 @@ func (r *Reconciler) reconcile(ctx context.Context, spcps *secretsstorev1.Secret
 		r.reporter.reportRotationCtMetric(ctx, providerName, requiresUpdate)
 		r.reporter.reportRotationDuration(ctx, time.Since(begin).Seconds())
 	}()
-
 	// get pod from manager's cache
 	pod := &corev1.Pod{}
 	err = r.cache.Get(
@@ -395,9 +392,8 @@ func (r *Reconciler) reconcile(ctx context.Context, spcps *secretsstorev1.Secret
 		r.generateEvent(pod, corev1.EventTypeWarning, mountRotationFailedReason, fmt.Sprintf("failed to lookup provider client: %q", providerName))
 		return fmt.Errorf("failed to lookup provider client: %q", providerName)
 	}
-	// node id is "", because we expect to retrieve the cache instead of creating it
-	// TODO: we need to pass a writer here to update the cache
-	newObjectVersions, errorReason, err := secretsstore.MountContent(ctx, providerClient, string(paramsJSON), string(secretsJSON), spcps.Status.TargetPath, string(permissionJSON), oldObjectVersions, nil /*todo we need a writer here to update*/, r.cache, pod.Spec.ServiceAccountName, pod.Name, pod.Namespace, spc.Name, "", "")
+	newObjectVersions, errorReason, err := secretsstore.MountContent(ctx, providerClient, string(paramsJSON), string(secretsJSON), spcps.Status.TargetPath, string(permissionJSON), oldObjectVersions, nil, nil, pod.Spec.ServiceAccountName, pod.Name, pod.Namespace, spc.Name, nodePublishSecretRef.Name, spcps.Labels[secretsstorev1.InternalNodeLabel])
+	// c client.Client, reader client.Reader, serviceAccountName string, podName string, namespace string, spcName string, nodeRefKey string, nodeID string
 	if err != nil {
 		r.generateEvent(pod, corev1.EventTypeWarning, mountRotationFailedReason, fmt.Sprintf("provider mount err: %+v", err))
 		return fmt.Errorf("failed to rotate objects for pod %s/%s, err: %w", spcps.Namespace, spcps.Status.PodName, err)
