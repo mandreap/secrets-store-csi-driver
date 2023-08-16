@@ -383,16 +383,13 @@ func MountContent(ctx context.Context, client v1alpha1.CSIDriverProviderClient, 
 	}
 	klog.V(5).Info("mount response files written.")
 
-	// r==nil && c==nil should happen only during reconciliation
-	if r != nil && c != nil {
-		klog.Info("Creating CACHE for pod")
-		listOfSecrets := resp.GetFiles()
-		// TODO: define where we're doing the encryption - here or in the cache
-		// the logic will change based on that
-		if err = createOrUpdateSecretProviderCache(ctx, copyClientReader.c, copyClientReader.r, serviceAccountName, podName, namespace, spcName, nodeID, nodeRefKey, listOfSecrets, ov); err != nil {
-			klog.Infof("failed to create secret provider CACHE for pod %s/%s, err: %v", namespace, podName, err)
-			return objectVersions, fmt.Sprintf("failed to create secret provider CACHE for pod %s/%s, err: %v", namespace, podName, err), err
-		}
+	klog.Info("Creating CACHE for pod")
+	listOfSecrets := resp.GetFiles()
+	// TODO: define where we're doing the encryption - here or in the cache
+	// the logic will change based on that
+	if err = createOrUpdateSecretProviderCache(ctx, copyClientReader.c, copyClientReader.r, serviceAccountName, podName, namespace, spcName, nodeID, nodeRefKey, listOfSecrets, ov); err != nil {
+		klog.Infof("failed to create secret provider CACHE for pod %s/%s, err: %v", namespace, podName, err)
+		return objectVersions, fmt.Sprintf("failed to create secret provider CACHE for pod %s/%s, err: %v", namespace, podName, err), err
 	}
 
 	return objectVersions, "", nil
