@@ -97,15 +97,15 @@ func addMissingSecretsFiles(file *[]*secretsstorev1.CacheFile, fileSecrets []*v1
 	}
 	var shouldUpdate bool = false
 	for _, fileSecret := range fileSecrets {
-		found := false
+		var foundFile *secretsstorev1.CacheFile = nil
 		for _, f := range *file {
 			if fileSecret.Path == f.Path {
-				found = true
+				foundFile = f
 				break
 			}
 		}
-		if !found {
-			// TODO: rethink this
+
+		if foundFile == nil {
 			if len(objectVersions) > 0 && cacheObjectVersions != nil {
 				for _, objectVersion := range objectVersions {
 					(*cacheObjectVersions) = append(*cacheObjectVersions, &secretsstorev1.CacheObjectVersion{
@@ -123,6 +123,33 @@ func addMissingSecretsFiles(file *[]*secretsstorev1.CacheFile, fileSecrets []*v1
 				ObjectVersion: *cacheObjectVersions,
 			})
 			shouldUpdate = true
+		} else {
+			foundFile.Mode = fileSecret.Mode
+			foundFile.Contents = fileSecret.Contents
+
+			for _, objectVersion := range objectVersions {
+				foundObjectVersion := false
+				for _, cacheObjectVersion := range foundFile.ObjectVersion {
+					if objectVersion.Id == cacheObjectVersion.Id && objectVersion.Version == cacheObjectVersion.Version {
+						foundObjectVersion = true
+						break
+					}
+					if objectVersion.Id == cacheObjectVersion.Id && objectVersion.Version != cacheObjectVersion.Version {
+						cacheObjectVersion.Version = objectVersion.Version
+						foundObjectVersion = true
+						shouldUpdate = true
+						break
+					}
+				}
+				if !foundObjectVersion {
+					*cacheObjectVersions = append(*cacheObjectVersions, &secretsstorev1.CacheObjectVersion{
+						Id:      objectVersion.Id,
+						Version: objectVersion.Version,
+					})
+					shouldUpdate = true
+				}
+			}
+			foundFile.ObjectVersion = *cacheObjectVersions
 		}
 	}
 	return shouldUpdate
