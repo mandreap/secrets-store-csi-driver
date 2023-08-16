@@ -106,8 +106,6 @@ func (r *SecretProviderCacheReconciler) Patcher(ctx context.Context) error {
 // +kubebuilder:rbac:groups=secrets-store.csi.x-k8s.io,resources=secretprovidercaches/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=secrets-store.csi.x-k8s.io,resources=secretproviderclasses,verbs=get;list;watch
 // +kubebuilder:rbac:groups=secrets-store.csi.x-k8s.io,resources=secretproviderclasses/status,verbs=get;list;watch
-// +kubebuilder:rbac:groups=secrets-store.csi.x-k8s.io,resources=secretproviderclasspodstatuses,verbs=get;list;watch
-// +kubebuilder:rbac:groups=secrets-store.csi.x-k8s.io,resources=secretproviderclasspodstatuses/status,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups="storage.k8s.io",resources=csidrivers,verbs=get;list;watch,resourceNames=secrets-store.csi.k8s.io
@@ -128,6 +126,22 @@ func (r *SecretProviderCacheReconciler) Reconcile(ctx context.Context, req ctrl.
 	for i := range spCaches {
 		spCache := spCaches[i]
 		namespace := spCache.ObjectMeta.Namespace
+		// check if the associated spc is deleted
+		spcName := spCache.Spec.SecretProviderClassName
+		spc := &secretsstorev1.SecretProviderClass{}
+		err := r.reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: spcName}, spc)
+		if err != nil && !errors.IsNotFound(err) {
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, err
+		}
+		if errors.IsNotFound(err) {
+			klog.InfoS("SPC not found - removing the cache", "spc", spcName)
+			err = r.writer.Delete(ctx, &spCache)
+			if err != nil {
+				klog.ErrorS(err, "Failed to delete SecretProviderCache")
+				return ctrl.Result{}, err
+			}
+			continue
+		}
 		if spCache.Spec.SpcFilesWorkloads == nil {
 			spCache.Status.WarningNoPersistencyOnRestart = false
 			err := r.Status().Update(ctx, &spCache)
@@ -138,10 +152,6 @@ func (r *SecretProviderCacheReconciler) Reconcile(ctx context.Context, req ctrl.
 		}
 		var warning bool = false
 		cacheSpcWorkloadFiles := spCache.Spec.SpcFilesWorkloads
-		spcName := spCache.Spec.SecretProviderClassName
-		//klog.InfoS("Secret Provider Class Name", "spcName", spcName)
-		spc := &secretsstorev1.SecretProviderClass{}
-		err := r.reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: spcName}, spc)
 		if err != nil && !errors.IsNotFound(err) {
 			return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 		}

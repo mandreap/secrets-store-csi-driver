@@ -232,6 +232,24 @@ func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, rea
 		},
 	}
 
+	spc := &secretsstorev1.SecretProviderClass{}
+	err = reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: spcName}, spc)
+	if err != nil {
+		klog.ErrorS(err, "failed to get secretproviderclass", "spcName", spcName)
+		return err
+	}
+
+	// Set owner reference as the secret provider class as the mapping between secret provider cache and
+	// secret provider class is 1 to 1. When secret provider class is deleted, the cache will automatically be garbage collected
+	spCache.SetOwnerReferences([]metav1.OwnerReference{
+		{
+			APIVersion: "v1",
+			Kind:       "SecretProviderClass",
+			Name:       spcName,
+			UID:        types.UID(spc.UID),
+		},
+	})
+
 	err = c.Create(ctx, spCache)
 	if err == nil {
 		klog.Info("SPCache created: %s", spCacheName)
@@ -312,6 +330,14 @@ func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, rea
 			if ownerUID != existingWorkloadItem.OwnerReferenceUID {
 				klog.InfoS("Different UIDs", "workloadName", workloadName, "ownerUID", ownerUID, "existing ownerUID", existingWorkloadItem.OwnerReferenceUID)
 				spCacheUpdate.Spec.SpcFilesWorkloads.WorkloadsMap[workloadName].WarningNewUID = true
+			}
+		}
+	}
+
+	for _, ownerRef := range spCacheUpdate.OwnerReferences {
+		if ownerRef.Kind == "SecretProviderClass" {
+			if ownerRef.Name != spcName || ownerRef.UID != spc.UID {
+				klog.InfoS("ownerRef.Name is different", "expected", spcName, "got owner", ownerRef.Name)
 			}
 		}
 	}

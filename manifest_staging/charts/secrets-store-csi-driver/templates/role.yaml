@@ -84,10 +84,8 @@ rules:
   - secretproviderclasspodstatuses/status
   verbs:
   - get
-  - list
   - patch
   - update
-  - watch
 - apiGroups:
   - storage.k8s.io
   resourceNames:

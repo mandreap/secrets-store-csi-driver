@@ -455,6 +455,7 @@ func mountFromSecretProviderCache(ctx context.Context, c client.Client, r client
 		return err
 	}
 
+	// we need to do this to add the pod that gets created now to the cache if its not there yet
 	return createOrUpdateSecretProviderCache(ctx, providerClient.c, providerClient.r, serviceAccountName, podName, namespace, spcName, nodeID, nodeRefKey, writePayloads, ov)
 }
 
