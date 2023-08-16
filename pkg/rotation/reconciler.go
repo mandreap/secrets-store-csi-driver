@@ -392,7 +392,21 @@ func (r *Reconciler) reconcile(ctx context.Context, spcps *secretsstorev1.Secret
 		r.generateEvent(pod, corev1.EventTypeWarning, mountRotationFailedReason, fmt.Sprintf("failed to lookup provider client: %q", providerName))
 		return fmt.Errorf("failed to lookup provider client: %q", providerName)
 	}
-	newObjectVersions, errorReason, err := secretsstore.MountContent(ctx, providerClient, string(paramsJSON), string(secretsJSON), spcps.Status.TargetPath, string(permissionJSON), oldObjectVersions, nil, nil, pod.Spec.ServiceAccountName, pod.Name, pod.Namespace, spc.Name, nodePublishSecretRef.Name, spcps.Labels[secretsstorev1.InternalNodeLabel])
+
+	klog.InfoS("EWS starting rotation", "spcps", klog.KObj(spcps), "controller", "rotation")
+	podServiceAccount := pod.Spec.ServiceAccountName
+	podName := pod.Name
+	podNamespace := pod.Namespace
+	spcName := spc.Name
+	nodePublishRef := ""
+	if nodePublishSecretRef != nil {
+		nodePublishRef := nodePublishSecretRef.Name
+		klog.InfoS("nodePublishSecretRef found", "nodePublishRef", nodePublishRef)
+	}
+	nodeID := spcps.Labels[secretsstorev1.InternalNodeLabel]
+
+	klog.InfoS("EWS Info:", "podServiceAccount", podServiceAccount, "podName", podName, "podNamespace", podNamespace, "spcName", spcName, "nodePublishRef", nodePublishRef, "nodeID", nodeID)
+	newObjectVersions, errorReason, err := secretsstore.MountContent(ctx, providerClient, string(paramsJSON), string(secretsJSON), spcps.Status.TargetPath, string(permissionJSON), oldObjectVersions, nil, nil, podServiceAccount, podName, podNamespace, spcName, nodePublishRef, nodeID)
 	// c client.Client, reader client.Reader, serviceAccountName string, podName string, namespace string, spcName string, nodeRefKey string, nodeID string
 	if err != nil {
 		r.generateEvent(pod, corev1.EventTypeWarning, mountRotationFailedReason, fmt.Sprintf("provider mount err: %+v", err))
