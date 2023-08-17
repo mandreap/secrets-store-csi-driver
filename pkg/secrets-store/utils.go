@@ -90,7 +90,7 @@ func getSecretProviderItem(ctx context.Context, c client.Client, name, namespace
 	return spc, nil
 }
 
-func addMissingSecretsFiles(file *[]*secretsstorev1.CacheFile, fileSecrets []*v1alpha1.File, cacheObjectVersions *[]*secretsstorev1.CacheObjectVersion, objectVersions []*v1alpha1.ObjectVersion) bool {
+func addMissingSecretsOrUpdateFiles(file *[]*secretsstorev1.CacheFile, fileSecrets []*v1alpha1.File, cacheObjectVersions *[]*secretsstorev1.CacheObjectVersion, objectVersions []*v1alpha1.ObjectVersion) bool {
 	if file == nil || cacheObjectVersions == nil {
 		klog.InfoS("File or ObjectVersions is nil: can't add file secrets to cacheFile")
 		return true
@@ -308,7 +308,7 @@ func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, rea
 		}
 	}()
 
-	var shouldUpdateCache bool = addMissingSecretsFiles(spCacheUpdate.Spec.SpcFilesWorkloads.SecretFiles, fileSecrets, cacheObjectVersions, objectVersions)
+	var shouldUpdateCache bool = addMissingSecretsOrUpdateFiles(spCacheUpdate.Spec.SpcFilesWorkloads.SecretFiles, fileSecrets, cacheObjectVersions, objectVersions)
 	// TODO: remove these 2 -> should never happen
 	if serviceAccountName != spCacheUpdate.Spec.ServiceAccountName {
 		klog.InfoS("ServiceAccountName is different, updating the cache:", "serviceAccountName", serviceAccountName)

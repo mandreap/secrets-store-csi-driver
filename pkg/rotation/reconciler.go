@@ -405,6 +405,7 @@ func (r *Reconciler) reconcile(ctx context.Context, spcps *secretsstorev1.Secret
 	}
 	nodeID := spcps.Labels[secretsstorev1.InternalNodeLabel]
 
+	//TODO: we need to reconcile the cache first here, and consider mounting from the cache if need be (if the provider agrees)
 	klog.InfoS("EWS Info:", "podServiceAccount", podServiceAccount, "podName", podName, "podNamespace", podNamespace, "spcName", spcName, "nodePublishRef", nodePublishRef, "nodeID", nodeID)
 	newObjectVersions, errorReason, err := secretsstore.MountContent(ctx, providerClient, string(paramsJSON), string(secretsJSON), spcps.Status.TargetPath, string(permissionJSON), oldObjectVersions, nil, nil, podServiceAccount, podName, podNamespace, spcName, nodePublishRef, nodeID)
 	// c client.Client, reader client.Reader, serviceAccountName string, podName string, namespace string, spcName string, nodeRefKey string, nodeID string
