@@ -22,31 +22,32 @@ PROJECT_NAME := secrets-store-csi-driver
 BUILD_COMMIT := $(shell git rev-parse --short HEAD)
 REPO_PATH="$(ORG_PATH)/$(PROJECT_NAME)"
 
-REGISTRY ?= gcr.io/k8s-staging-csi-secrets-store
-IMAGE_NAME ?= driver
-CRD_IMAGE_NAME ?= driver-crds
+DRIVER_REGISTRY_NAME ?= gcr.io
+DRIVER_REGISTRY ?= gcr.io/k8s-staging-csi-secrets-store
+DRIVER_IMAGE_NAME ?= driver
+DRIVER_CRD_IMAGE_NAME ?= driver-crds
 E2E_PROVIDER_IMAGE_NAME ?= e2e-provider
 
 # Release version is the current supported release for the driver
 # Update this version when the helm chart is being updated for release
 RELEASE_VERSION := v1.3.4
-IMAGE_VERSION ?= v1.3.4
+DRIVER_IMAGE_VERSION ?= v1.3.4
 
 # Use a custom version for E2E tests if we are testing in CI
 ifdef CI
-override IMAGE_VERSION := v1.3.0-e2e-$(BUILD_COMMIT)
+override DRIVER_IMAGE_VERSION := v1.3.0-e2e-$(BUILD_COMMIT)
 endif
 
-IMAGE_TAG=$(REGISTRY)/$(IMAGE_NAME):$(IMAGE_VERSION)
-CRD_IMAGE_TAG=$(REGISTRY)/$(CRD_IMAGE_NAME):$(IMAGE_VERSION)
-E2E_PROVIDER_IMAGE_TAG=$(REGISTRY)/$(E2E_PROVIDER_IMAGE_NAME):$(IMAGE_VERSION)
+DRIVER_IMAGE_TAG=$(DRIVER_REGISTRY)/$(DRIVER_IMAGE_NAME):$(DRIVER_IMAGE_VERSION)
+CRD_IMAGE_TAG=$(DRIVER_REGISTRY)/$(DRIVER_CRD_IMAGE_NAME):$(DRIVER_IMAGE_VERSION)
+E2E_PROVIDER_IMAGE_TAG=$(DRIVER_REGISTRY)/$(E2E_PROVIDER_IMAGE_NAME):$(DRIVER_IMAGE_VERSION)
 
 # build variables
 BUILD_TIMESTAMP := $$(date +%Y-%m-%d-%H:%M)
 BUILD_TIME_VAR := $(REPO_PATH)/pkg/version.BuildTime
 BUILD_VERSION_VAR := $(REPO_PATH)/pkg/version.BuildVersion
 VCS_VAR := $(REPO_PATH)/pkg/version.Vcs
-LDFLAGS ?= "-X $(BUILD_TIME_VAR)=$(BUILD_TIMESTAMP) -X $(BUILD_VERSION_VAR)=$(IMAGE_VERSION) -X $(VCS_VAR)=$(BUILD_COMMIT)"
+LDFLAGS ?= "-X $(BUILD_TIME_VAR)=$(BUILD_TIMESTAMP) -X $(BUILD_VERSION_VAR)=$(DRIVER_IMAGE_VERSION) -X $(VCS_VAR)=$(BUILD_COMMIT)"
 
 GO_FILES=$(shell go list ./... ; | grep -v /test/sanity)
 TOOLS_MOD_DIR := ./hack/tools
@@ -157,10 +158,10 @@ sanity-test:
 .PHONY: image-scan
 image-scan: $(TRIVY)
 	# show all vulnerabilities
-	$(TRIVY) image --severity MEDIUM,HIGH,CRITICAL $(IMAGE_TAG)
+	$(TRIVY) image --severity MEDIUM,HIGH,CRITICAL $(DRIVER_IMAGE_TAG)
 	$(TRIVY) image --severity MEDIUM,HIGH,CRITICAL $(CRD_IMAGE_TAG)
 	# show vulnerabilities that have been fixed
-	$(TRIVY) image --exit-code 1 --ignore-unfixed --severity MEDIUM,HIGH,CRITICAL $(IMAGE_TAG)
+	$(TRIVY) image --exit-code 1 --ignore-unfixed --severity MEDIUM,HIGH,CRITICAL $(DRIVER_IMAGE_TAG)
 	$(TRIVY) image --vuln-type os --exit-code 1 --ignore-unfixed --severity MEDIUM,HIGH,CRITICAL $(CRD_IMAGE_TAG)
 
 ## --------------------------------------
@@ -295,7 +296,7 @@ e2e-provider-container:
 
 .PHONY: container
 container: crd-container
-	docker buildx build --no-cache --build-arg IMAGE_VERSION=$(IMAGE_VERSION) -t $(IMAGE_TAG) -f docker/Dockerfile --progress=plain .
+	docker buildx build --no-cache --build-arg DRIVER_IMAGE_VERSION=$(DRIVER_IMAGE_VERSION) -t $(DRIVER_IMAGE_TAG) -f docker/Dockerfile --progress=plain .
 
 .PHONY: crd-container
 crd-container: build-crds
@@ -308,15 +309,15 @@ crd-container-linux: build-crds docker-buildx-builder
 
 .PHONY: container-linux
 container-linux: docker-buildx-builder
-	docker buildx build --no-cache --build-arg IMAGE_VERSION=$(IMAGE_VERSION) --output=type=$(OUTPUT_TYPE) --platform="linux/$(ARCH)" \
- 		-t $(IMAGE_TAG)-linux-$(ARCH) -f docker/Dockerfile .
+	docker buildx build --no-cache --build-arg DRIVER_IMAGE_VERSION=$(DRIVER_IMAGE_VERSION) --output=type=$(OUTPUT_TYPE) --platform="linux/$(ARCH)" \
+ 		-t $(DRIVER_IMAGE_TAG)-linux-$(ARCH) -f docker/Dockerfile .
 
 .PHONY: container-windows
 container-windows: docker-buildx-builder
-	docker buildx build --no-cache --build-arg IMAGE_VERSION=$(IMAGE_VERSION) --output=type=$(OUTPUT_TYPE) --platform="windows/$(ARCH)" \
+	docker buildx build --no-cache --build-arg DRIVER_IMAGE_VERSION=$(DRIVER_IMAGE_VERSION) --output=type=$(OUTPUT_TYPE) --platform="windows/$(ARCH)" \
 		--build-arg BASEIMAGE=mcr.microsoft.com/windows/nanoserver:$(OSVERSION) \
 		--build-arg BASEIMAGE_CORE=gcr.io/k8s-staging-e2e-test-images/windows-servercore-cache:1.0-linux-amd64-$(OSVERSION) \
- 		-t $(IMAGE_TAG)-windows-$(OSVERSION)-$(ARCH) -f docker/windows.Dockerfile .
+ 		-t $(DRIVER_IMAGE_TAG)-windows-$(OSVERSION)-$(ARCH) -f docker/windows.Dockerfile .
 
 .PHONY: docker-buildx-builder
 docker-buildx-builder:
@@ -338,12 +339,12 @@ container-all: docker-buildx-builder
 
 .PHONY: push-manifest
 push-manifest:
-	docker manifest create --amend $(IMAGE_TAG) $(foreach osarch, $(ALL_OS_ARCH), $(IMAGE_TAG)-${osarch})
+	docker manifest create --amend $(DRIVER_IMAGE_TAG) $(foreach osarch, $(ALL_OS_ARCH), $(DRIVER_IMAGE_TAG)-${osarch})
 	docker manifest create --amend $(CRD_IMAGE_TAG) $(foreach osarch, $(ALL_OS_ARCH.linux), $(CRD_IMAGE_TAG)-${osarch})
 	# add "os.version" field to windows images (based on https://github.com/kubernetes/kubernetes/blob/master/build/pause/Makefile)
 	set -x; \
-	registry_prefix=$(shell (echo ${REGISTRY} | grep -Eq ".*[\/\.].*") && echo "" || echo "docker.io/"); \
-	manifest_image_folder=`echo "$${registry_prefix}${IMAGE_TAG}" | sed "s|/|_|g" | sed "s/:/-/"`; \
+	registry_prefix=$(shell (echo ${DRIVER_REGISTRY} | grep -Eq ".*[\/\.].*") && echo "" || echo "docker.io/"); \
+	manifest_image_folder=`echo "$${registry_prefix}${DRIVER_IMAGE_TAG}" | sed "s|/|_|g" | sed "s/:/-/"`; \
 	for arch in $(ALL_ARCH.windows); do \
 		for osversion in $(ALL_OSVERSIONS.windows); do \
 			BASEIMAGE=mcr.microsoft.com/windows/nanoserver:$${osversion}; \
@@ -351,8 +352,8 @@ push-manifest:
 			sed -i -r "s/(\"os\"\:\"windows\")/\0,\"os.version\":\"$${full_version}\"/" "${HOME}/.docker/manifests/$${manifest_image_folder}/$${manifest_image_folder}-windows-$${osversion}-$${arch}"; \
 		done; \
 	done
-	docker manifest push --purge $(IMAGE_TAG)
-	docker manifest inspect $(IMAGE_TAG)
+	docker manifest push --purge $(DRIVER_IMAGE_TAG)
+	docker manifest inspect $(DRIVER_IMAGE_TAG)
 	docker manifest push --purge $(CRD_IMAGE_TAG)
 	docker manifest inspect $(CRD_IMAGE_TAG)
 
@@ -364,7 +365,7 @@ e2e-bootstrap: $(HELM) $(BATS) $(KIND) $(KUBECTL) $(ENVSUBST) $(YQ) #setup all r
 ifndef TEST_WINDOWS
 	$(MAKE) setup-kind
 endif
-	docker pull $(IMAGE_TAG) || $(MAKE) e2e-container
+	docker pull $(DRIVER_IMAGE_TAG) || $(MAKE) e2e-container
 
 .PHONY: setup-kind
 setup-kind: $(KIND)
@@ -374,7 +375,7 @@ setup-kind: $(KIND)
 
 .PHONY: setup-eks-cluster
 setup-eks-cluster: $(HELM) $(EKSCTL) $(BATS) $(ENVSUBST) $(YQ)
-	bash test/scripts/initialize_eks_cluster.bash $(EKS_CLUSTER_NAME) $(IMAGE_VERSION)
+	bash test/scripts/initialize_eks_cluster.bash $(EKS_CLUSTER_NAME) $(DRIVER_IMAGE_VERSION)
 
 .PHONY: e2e-container
 e2e-container:
@@ -382,7 +383,7 @@ ifdef TEST_WINDOWS
 	$(MAKE) container-all push-manifest
 else
 	$(MAKE) container
-	kind load docker-image --name kind $(IMAGE_TAG) $(CRD_IMAGE_TAG)
+	kind load docker-image --name kind $(DRIVER_IMAGE_TAG) $(CRD_IMAGE_TAG)
 endif
 
 .PHONY: e2e-mock-provider-container
@@ -414,7 +415,7 @@ e2e-deploy-manifest:
 	kubectl apply -f manifest_staging/deploy/role-secretproviderclasses-admin.yaml
 	kubectl apply -f manifest_staging/deploy/role-secretproviderclasses-viewer.yaml
 
-	yq e '(.spec.template.spec.containers[1].image = "$(IMAGE_TAG)") | (.spec.template.spec.containers[1].args as $$x | $$x += "--enable-secret-rotation=true" | $$x[-1] style="double") | (.spec.template.spec.containers[1].args as $$x | $$x += "--rotation-poll-interval=30s" | $$x[-1] style="double")' 'manifest_staging/deploy/secrets-store-csi-driver.yaml' | kubectl apply -f -
+	yq e '(.spec.template.spec.containers[1].image = "$(DRIVER_IMAGE_TAG)") | (.spec.template.spec.containers[1].args as $$x | $$x += "--enable-secret-rotation=true" | $$x[-1] style="double") | (.spec.template.spec.containers[1].args as $$x | $$x += "--rotation-poll-interval=30s" | $$x[-1] style="double")' 'manifest_staging/deploy/secrets-store-csi-driver.yaml' | kubectl apply -f -
 
 	yq e '(.spec.template.spec.containers[1].args as $$x | $$x += "--enable-secret-rotation=true" | $$x[-1] style="double") | (.spec.template.spec.containers[1].args as $$x | $$x += "--rotation-poll-interval=30s" | $$x[-1] style="double")' 'manifest_staging/deploy/secrets-store-csi-driver-windows.yaml' | kubectl apply -f -
 
@@ -423,12 +424,12 @@ e2e-helm-deploy:
 	helm install csi-secrets-store manifest_staging/charts/secrets-store-csi-driver --namespace kube-system --wait --timeout=5m -v=5 --debug \
 		--set linux.image.pullPolicy="IfNotPresent" \
 		--set windows.image.pullPolicy="IfNotPresent" \
-		--set linux.image.repository=$(REGISTRY)/$(IMAGE_NAME) \
-		--set linux.image.tag=$(IMAGE_VERSION) \
-		--set windows.image.repository=$(REGISTRY)/$(IMAGE_NAME) \
-		--set windows.image.tag=$(IMAGE_VERSION) \
-		--set linux.crds.image.repository=$(REGISTRY)/$(CRD_IMAGE_NAME) \
-		--set linux.crds.image.tag=$(IMAGE_VERSION) \
+		--set linux.image.repository=$(DRIVER_REGISTRY)/$(DRIVER_IMAGE_NAME) \
+		--set linux.image.tag=$(DRIVER_IMAGE_VERSION) \
+		--set windows.image.repository=$(DRIVER_REGISTRY)/$(DRIVER_IMAGE_NAME) \
+		--set windows.image.tag=$(DRIVER_IMAGE_VERSION) \
+		--set linux.crds.image.repository=$(DRIVER_REGISTRY)/$(DRIVER_CRD_IMAGE_NAME) \
+		--set linux.crds.image.tag=$(DRIVER_IMAGE_VERSION) \
 		--set linux.crds.annotations."myAnnotation"=test \
 		--set windows.enabled=true \
 		--set linux.enabled=true \
@@ -441,12 +442,12 @@ e2e-helm-deploy:
 .PHONY: e2e-helm-upgrade
 e2e-helm-upgrade:
 	helm upgrade csi-secrets-store manifest_staging/charts/secrets-store-csi-driver --namespace kube-system --reuse-values --timeout=5m -v=5 --debug \
-		--set linux.image.repository=$(REGISTRY)/$(IMAGE_NAME) \
-		--set linux.image.tag=$(IMAGE_VERSION) \
-		--set windows.image.repository=$(REGISTRY)/$(IMAGE_NAME) \
-		--set windows.image.tag=$(IMAGE_VERSION) \
-		--set linux.crds.image.repository=$(REGISTRY)/$(CRD_IMAGE_NAME) \
-		--set linux.crds.image.tag=$(IMAGE_VERSION) \
+		--set linux.image.repository=$(DRIVER_REGISTRY)/$(DRIVER_IMAGE_NAME) \
+		--set linux.image.tag=$(DRIVER_IMAGE_VERSION) \
+		--set windows.image.repository=$(DRIVER_REGISTRY)/$(DRIVER_IMAGE_NAME) \
+		--set windows.image.tag=$(DRIVER_IMAGE_VERSION) \
+		--set linux.crds.image.repository=$(DRIVER_REGISTRY)/$(DRIVER_CRD_IMAGE_NAME) \
+		--set linux.crds.image.tag=$(DRIVER_IMAGE_VERSION) \
 		--set linux.crds.annotations."myAnnotation"=test
 
 .PHONY: e2e-helm-deploy-release # test helm package for the release
