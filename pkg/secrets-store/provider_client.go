@@ -310,6 +310,10 @@ func MountContent(ctx context.Context, client v1alpha1.CSIDriverProviderClient, 
 		cacheEncryptionKey, err = retrieveEncryptionKey(ctx, copyClientReader.r)
 	}
 
+	if nodeRefKey == "" {
+		nodeRefKey = "invalidnoderef"
+	}
+
 	objectVersions := make(map[string]string)
 	if copyClientReader == nil {
 		klog.Warning("ProviderClient is nil, can't create or update CACHE")
