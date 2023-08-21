@@ -18,11 +18,16 @@ package secretsstore
 
 import (
 	"context"
+	"crypto/rand"
 	"os"
 
+	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/secrets-store-csi-driver/pkg/k8s"
 	"sigs.k8s.io/secrets-store-csi-driver/pkg/version"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	mount "k8s.io/mount-utils"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -33,11 +38,55 @@ import (
 type SecretsStore struct {
 	endpoint string
 
-	ns  *nodeServer
-	cs  *controllerServer
-	ids *identityServer
+	ns                 *nodeServer
+	cs                 *controllerServer
+	ids                *identityServer
+	cacheEncryptionKey *corev1.Secret
 }
 
+func generateCacheEncryptionKey(ctx context.Context, client client.Client,
+	reader client.Reader) (*corev1.Secret, error) {
+	// check if the key is stored in the system
+	cacheEncryptionKey := &corev1.Secret{}
+	err := reader.Get(ctx, types.NamespacedName{Name: "secrets-store-csi-driver-cache-encryption-key", Namespace: "kube-system"}, cacheEncryptionKey)
+	if err == nil {
+		return cacheEncryptionKey, nil
+	}
+	//TODO: check what we should return here
+	if !apierrors.IsNotFound(err) {
+		klog.ErrorS(err, "failed to get cache encryption key from the system")
+	} else {
+		klog.InfoS("cache encryption key not found in the system")
+	}
+
+	// generate a new key with a finlaizer to avoid accidental deletion
+	cacheEncryptionKey = &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Finalizers: []string{"secrets-store.csi.k8s.io/finalizer-cache-encryption-key"},
+			Name:       "secrets-store-csi-driver-cache-encryption-key",
+			Namespace:  "kube-system",
+		},
+		Type: corev1.SecretTypeOpaque,
+	}
+	// generate a random 32 byte key
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		klog.ErrorS(err, "failed to generate cache encryption key")
+		return nil, err
+	}
+	cacheEncryptionKey.Data = map[string][]byte{
+		"key": key,
+	}
+	err = client.Create(ctx, cacheEncryptionKey)
+	if err != nil {
+		klog.ErrorS(err, "failed to create cache encryption key")
+		return nil, err
+	}
+	return cacheEncryptionKey, nil
+}
+
+// Add key creation here
+// make sure to add finalizers for the key
 func NewSecretsStoreDriver(driverName, nodeID, endpoint string,
 	providerClients *PluginClientBuilder,
 	client client.Client,
@@ -56,11 +105,17 @@ func NewSecretsStoreDriver(driverName, nodeID, endpoint string,
 		os.Exit(1)
 	}
 
+	cacheEncryptionKey, err := generateCacheEncryptionKey(context.Background(), client, reader)
+	if err != nil {
+		klog.ErrorS(err, "failed to generate cache encryption key")
+		os.Exit(1)
+	}
 	return &SecretsStore{
-		endpoint: endpoint,
-		ns:       ns,
-		cs:       newControllerServer(),
-		ids:      newIdentityServer(driverName, version.BuildVersion),
+		endpoint:           endpoint,
+		ns:                 ns,
+		cs:                 newControllerServer(),
+		ids:                newIdentityServer(driverName, version.BuildVersion),
+		cacheEncryptionKey: cacheEncryptionKey,
 	}
 }
 

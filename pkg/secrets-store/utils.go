@@ -184,8 +184,13 @@ func addFileSecretsToCacheFile(cacheFile *[]*secretsstorev1.CacheFile, fileSecre
 
 // createOrUpdateSecretProviderCache creates secret provider cache if it doesn't exist.
 // if the secret provider cache already exists, it updates the status and owner references.
-func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, reader client.Reader, serviceAccountName, podName, namespace, spcName, nodeID, nodeRefKey string, fileSecrets []*v1alpha1.File, objectVersions []*v1alpha1.ObjectVersion) error {
-	spCacheName := namespace + spcName
+func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, reader client.Reader, serviceAccountName, podName, namespace, spcName, nodeID, nodeRefKey string, fileSecrets []*v1alpha1.File, objectVersions []*v1alpha1.ObjectVersion, cacheEncryptionKey *corev1.Secret) error {
+	// todo: this should be UID
+	nodeRef := nodeRefKey
+	if nodeRef == "" {
+		nodeRef = "DefaultInvalidNodeRef"
+	}
+	spCacheName := namespace + spcName + serviceAccountName + nodeRef
 	klog.InfoS("creating secret provider cache", "spCache", spCacheName)
 
 	// TODO: add object versions to cache
@@ -302,6 +307,7 @@ func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, rea
 		}
 	}
 
+	klog.InfoS("cache encryption key", "key", string(cacheEncryptionKey.Data["key"]))
 	defer func() {
 		if spCacheUpdate.Status.WarningNoPersistencyOnRestart != warningNoPersistencyOnRestart && warningNoPersistencyOnRestart {
 			spCacheUpdate.Status.WarningNoPersistencyOnRestart = warningNoPersistencyOnRestart

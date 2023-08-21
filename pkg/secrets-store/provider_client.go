@@ -40,6 +40,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/klog/v2"
 )
@@ -246,11 +247,14 @@ func setSimulationMode(ctx context.Context, csiDriverProviderClient v1alpha1.CSI
 	return nil
 }
 
-func retrieveCacheAndSetSimulationMode(ctx context.Context, csiDriverProviderClient v1alpha1.CSIDriverProviderClient, r client.Reader, namespace, spcName string) error {
+func retrieveCacheAndSetSimulationMode(ctx context.Context, csiDriverProviderClient v1alpha1.CSIDriverProviderClient, r client.Reader, namespace, spcName, serviceAccountName, nodeRef string) error {
 	klog.InfoS("EWS retrieve cache and set simulation mode", "spcName", spcName, "namespace", namespace)
 
 	cache := &secretsstorev1.SecretProviderCache{}
-	cacheName := namespace + spcName
+	if nodeRef == "" {
+		nodeRef = "DefaultInvalidNodeRef"
+	}
+	cacheName := namespace + spcName + serviceAccountName + nodeRef
 	err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: cacheName}, cache)
 	if err == nil {
 		klog.InfoS("Cache found set simulation mode", "cache", cacheName)
@@ -268,6 +272,25 @@ func retrieveCacheAndSetSimulationMode(ctx context.Context, csiDriverProviderCli
 	return err
 }
 
+func retrieveEncryptionKey(ctx context.Context, r client.Reader) (*corev1.Secret, error) {
+	klog.InfoS("EWS retrieve encryption key")
+
+	cacheEncryptionKey := &corev1.Secret{}
+	err := r.Get(ctx, client.ObjectKey{Name: "secrets-store-csi-driver-cache-encryption-key", Namespace: "kube-system"}, cacheEncryptionKey)
+	if err == nil {
+		return cacheEncryptionKey, nil
+	}
+
+	if !apierrors.IsNotFound(err) {
+		klog.ErrorS(err, "failed to get cache encryption key from the system")
+		return nil, err
+	}
+
+	klog.InfoS("cache encryption key not found in the system")
+
+	return cacheEncryptionKey, err
+}
+
 // MountContent calls the client's Mount() RPC with helpers to format the
 // request and interpret the response.
 func MountContent(ctx context.Context, client v1alpha1.CSIDriverProviderClient, attributes, secrets, targetPath, permission string, oldObjectVersions map[string]string,
@@ -281,6 +304,12 @@ func MountContent(ctx context.Context, client v1alpha1.CSIDriverProviderClient, 
 		}
 	}
 
+	var cacheEncryptionKey *corev1.Secret = nil
+	var err error
+	if copyClientReader != nil {
+		cacheEncryptionKey, err = retrieveEncryptionKey(ctx, copyClientReader.r)
+	}
+
 	objectVersions := make(map[string]string)
 	if copyClientReader == nil {
 		klog.Warning("ProviderClient is nil, can't create or update CACHE")
@@ -291,7 +320,7 @@ func MountContent(ctx context.Context, client v1alpha1.CSIDriverProviderClient, 
 	// logic to retrieve cache and set simulation mode
 	// reconciliation will not be done if the provider is unavailable
 	if r != nil && c != nil {
-		retrieveCacheAndSetSimulationMode(ctx, client, r, namespace, spcName)
+		retrieveCacheAndSetSimulationMode(ctx, client, r, namespace, spcName, serviceAccountName, nodeRefKey)
 
 		reqGetSimulation := &v1alpha1.Void{}
 		respGetSimulation, err := client.GetSimulationMode(ctx, reqGetSimulation)
@@ -308,7 +337,7 @@ func MountContent(ctx context.Context, client v1alpha1.CSIDriverProviderClient, 
 		// if the simulation mode is set to true then mount from cache
 		if respGetSimulation.Value {
 			klog.Info("Should mount from CACHE because provider is unavailable due to simulation set to true")
-			if err = mountFromSecretProviderCache(ctx, copyClientReader.c, copyClientReader.r, serviceAccountName, podName, namespace, spcName, nodeID, nodeRefKey, targetPath, objectVersions); err != nil {
+			if err = mountFromSecretProviderCache(ctx, copyClientReader.c, copyClientReader.r, serviceAccountName, podName, namespace, spcName, nodeID, nodeRefKey, targetPath, objectVersions, cacheEncryptionKey); err != nil {
 				klog.Infof("failed to mount from secret provider CACHE for pod %s/%s, err: %v", namespace, podName, err)
 				return objectVersions, fmt.Sprintf("failed to mount from secret provider CACHE for pod %s/%s, err: %v", namespace, podName, err), err
 			}
@@ -343,7 +372,7 @@ func MountContent(ctx context.Context, client v1alpha1.CSIDriverProviderClient, 
 		// This is not the case during reconciliation, where we want to fail/not do reconciliation if the provider is unavailable
 		if isUnavailableError(err) && r != nil && c != nil {
 			klog.Info("Mounting from CACHE because provider is really unavailable")
-			if err = mountFromSecretProviderCache(ctx, copyClientReader.c, copyClientReader.r, serviceAccountName, podName, namespace, spcName, nodeID, nodeRefKey, targetPath, objectVersions); err != nil {
+			if err = mountFromSecretProviderCache(ctx, copyClientReader.c, copyClientReader.r, serviceAccountName, podName, namespace, spcName, nodeID, nodeRefKey, targetPath, objectVersions, cacheEncryptionKey); err != nil {
 				klog.Infof("failed to mount from secret provider CACHE for pod %s/%s, err: %v", namespace, podName, err)
 				return objectVersions, fmt.Sprintf("failed to mount from secret provider CACHE for pod %s/%s, err: %v", namespace, podName, err), err
 			}
@@ -387,7 +416,7 @@ func MountContent(ctx context.Context, client v1alpha1.CSIDriverProviderClient, 
 	listOfSecrets := resp.GetFiles()
 	// TODO: define where we're doing the encryption - here or in the cache
 	// the logic will change based on that
-	if err = createOrUpdateSecretProviderCache(ctx, copyClientReader.c, copyClientReader.r, serviceAccountName, podName, namespace, spcName, nodeID, nodeRefKey, listOfSecrets, ov); err != nil {
+	if err = createOrUpdateSecretProviderCache(ctx, copyClientReader.c, copyClientReader.r, serviceAccountName, podName, namespace, spcName, nodeID, nodeRefKey, listOfSecrets, ov, cacheEncryptionKey); err != nil {
 		klog.Infof("failed to create secret provider CACHE for pod %s/%s, err: %v", namespace, podName, err)
 		return objectVersions, fmt.Sprintf("failed to create secret provider CACHE for pod %s/%s, err: %v", namespace, podName, err), err
 	}
@@ -395,10 +424,14 @@ func MountContent(ctx context.Context, client v1alpha1.CSIDriverProviderClient, 
 	return objectVersions, "", nil
 }
 
-func mountFromSecretProviderCache(ctx context.Context, c client.Client, r client.Reader, serviceAccountName, podName, namespace, spcName, nodeID, nodeRefKey, targetPath string, objectVersions map[string]string) error {
+func mountFromSecretProviderCache(ctx context.Context, c client.Client, r client.Reader, serviceAccountName, podName, namespace, spcName, nodeID, nodeRefKey, targetPath string, objectVersions map[string]string, cacheEncryptionKey *corev1.Secret) error {
 	klog.InfoS("Mounting from CACHE", "podName", podName)
+	nodeRef := nodeRefKey
+	if nodeRef == "" {
+		nodeRef = "DefaultInvalidNodeRef"
+	}
+	cacheName := namespace + spcName + serviceAccountName + nodeRef
 	cache := &secretsstorev1.SecretProviderCache{}
-	cacheName := namespace + spcName
 	err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: cacheName}, cache)
 	if apierrors.IsNotFound(err) {
 		klog.InfoS("Cache not found", "cache", cacheName, "err", err)
@@ -409,6 +442,7 @@ func mountFromSecretProviderCache(ctx context.Context, c client.Client, r client
 		return err
 	}
 
+	// TODO: UID comparison here
 	if serviceAccountName != cache.Spec.ServiceAccountName {
 		klog.InfoS("ServiceAccountName mismatch", "serviceAccountName", serviceAccountName, "cache.Spec.ServiceAccountName", cache.Spec.ServiceAccountName)
 		return errors.New("ServiceAccountName mismatch")
@@ -451,6 +485,7 @@ func mountFromSecretProviderCache(ctx context.Context, c client.Client, r client
 	klog.InfoS("Writing files from cache to target path", "targetPath", targetPath)
 	writePayloads := make([]*v1alpha1.File, 0)
 	for _, file := range *spcDataBlobSecretFile {
+		//file = decryptFile(file, cacheEncryptionKey)
 		writePayloads = append(writePayloads, &v1alpha1.File{
 			Path:     file.Path,
 			Contents: file.Contents,
@@ -462,9 +497,31 @@ func mountFromSecretProviderCache(ctx context.Context, c client.Client, r client
 	}
 
 	// we need to do this to add the pod that gets created now to the cache if its not there yet
-	return createOrUpdateSecretProviderCache(ctx, copyClientReader.c, copyClientReader.r, serviceAccountName, podName, namespace, spcName, nodeID, nodeRefKey, writePayloads, ov)
+	return createOrUpdateSecretProviderCache(ctx, copyClientReader.c, copyClientReader.r, serviceAccountName, podName, namespace, spcName, nodeID, nodeRefKey, writePayloads, ov, cacheEncryptionKey)
 }
 
+/*
+	func encyrptFile(file *secretsstorev1.CacheFile, cacheEncryptionKey *corev1.Secret) (*secretsstorev1.CacheFile, error) {
+		if file == nil || cacheEncryptionKey == nil {
+			return file, errors.New("cache: file or cacheEncryptionKey is nil")
+		}
+
+		// encrypt the file and return it
+		// TODO: implement encryption
+		// need to pad the file contents to 16 bytes
+
+		return encryptedFile, nil
+	}
+
+	func decryptFile(file *secretsstorev1.CacheFile, cacheEncryptionKey *corev1.Secret) (*secretsstorev1.CacheFile, error) {
+		if file == nil || cacheEncryptionKey == nil {
+			return file, errors.New("cache: file or cacheEncryptionKey is nil")
+		}
+
+		// decrypt the file and return it
+		return encryptedFile, nil
+	}
+*/
 func SetSimulationMode(ctx context.Context, client v1alpha1.CSIDriverProviderClient) (*v1alpha1.Void, error) {
 	klog.InfoS("EWS set simulation mode")
 	req := &v1alpha1.BoolValue{Value: true}

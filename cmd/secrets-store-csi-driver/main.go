@@ -222,11 +222,6 @@ func mainErr() error {
 		reconciler.RunPatcher(ctx)
 	}()
 
-	/*go func() {
-		klog.Info("Main - starting CACHE patcher")
-		reconcilerCache.RunPatcher(ctx)
-	}()*/
-
 	// token request client
 	kubeClient := kubernetes.NewForConfigOrDie(cfg)
 	tokenClient := k8s.NewTokenClient(kubeClient, *driverName, 10*time.Minute)

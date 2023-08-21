@@ -32,6 +32,7 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	mount "k8s.io/mount-utils"
@@ -80,6 +81,16 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	var targetPath string
 	var mounted bool
 	errorReason := internalerrors.FailedToMount
+
+	// generate cacheEncryptionKey if it doesn't exist, retriver it from the system if it does
+	// this needs to be sent to the provider to decrypt the cache
+	/*
+		if ns.cacheEncryptionKey == nil {
+			ns.cacheEncryptionKey, err = ns.generateCacheEncryptionKey(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to generate cache encryption key, err: %w", err)
+			}
+		}*/
 
 	defer func() {
 		if err != nil {
