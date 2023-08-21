@@ -252,7 +252,7 @@ func retrieveCacheAndSetSimulationMode(ctx context.Context, csiDriverProviderCli
 
 	cache := &secretsstorev1.SecretProviderCache{}
 	if nodeRef == "" {
-		nodeRef = "DefaultInvalidNodeRef"
+		nodeRef = "invalidnoderef"
 	}
 	cacheName := namespace + spcName + serviceAccountName + nodeRef
 	err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: cacheName}, cache)
@@ -428,7 +428,7 @@ func mountFromSecretProviderCache(ctx context.Context, c client.Client, r client
 	klog.InfoS("Mounting from CACHE", "podName", podName)
 	nodeRef := nodeRefKey
 	if nodeRef == "" {
-		nodeRef = "DefaultInvalidNodeRef"
+		nodeRef = "invalidnoderef"
 	}
 	cacheName := namespace + spcName + serviceAccountName + nodeRef
 	cache := &secretsstorev1.SecretProviderCache{}

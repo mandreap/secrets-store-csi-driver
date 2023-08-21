@@ -188,7 +188,7 @@ func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, rea
 	// todo: this should be UID
 	nodeRef := nodeRefKey
 	if nodeRef == "" {
-		nodeRef = "DefaultInvalidNodeRef"
+		nodeRef = "invalidnoderef"
 	}
 	spCacheName := namespace + spcName + serviceAccountName + nodeRef
 	klog.InfoS("creating secret provider cache", "spCache", spCacheName)
