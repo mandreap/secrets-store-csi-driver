@@ -25,7 +25,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apiruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 	clientcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -33,9 +32,7 @@ import (
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
-	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	secretsstorev1 "sigs.k8s.io/secrets-store-csi-driver/apis/v1"
 	"sigs.k8s.io/secrets-store-csi-driver/pkg/client/clientset/versioned/scheme"
 )
@@ -69,39 +66,6 @@ func NewSecretProviderCacheReconciler(mgr manager.Manager, nodeID string) (*Secr
 	}, nil
 }
 
-// ListOptionsLabelSelector returns a ListOptions with a label selector for node name.
-func (r *SecretProviderCacheReconciler) ListOptionsLabelSelector() client.ListOption {
-	return client.MatchingLabels(map[string]string{
-		secretsstorev1.InternalNodeLabel: r.nodeID,
-	})
-}
-
-/*
-func (r *SecretProviderCacheReconciler) RunPatcher(ctx context.Context) {
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			if err := r.Patcher(ctx); err != nil {
-				klog.ErrorS(err, "failed to patch SecretProviderCache")
-			}
-		}
-	}
-}
-
-func (r *SecretProviderCacheReconciler) Patcher(ctx context.Context) error {
-	klog.V(10).Info("SecretProviderCacheReconciler patcher started")
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	klog.V(10).Info("SecretProviderCacheReconciler patcher completed")
-	return nil
-}*/
-
 // +kubebuilder:rbac:groups=secrets-store.csi.x-k8s.io,resources=secretprovidercaches,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=secrets-store.csi.x-k8s.io,resources=secretprovidercaches/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=secrets-store.csi.x-k8s.io,resources=secretproviderclasses,verbs=get;list;watch
@@ -118,7 +82,7 @@ func (r *SecretProviderCacheReconciler) Reconcile(ctx context.Context, req ctrl.
 
 	klog.InfoS("CACHE reconcile started", "spc", req.NamespacedName.String())
 	spCacheList := &secretsstorev1.SecretProviderCacheList{}
-	if err := r.reader.List(ctx, spCacheList, r.ListOptionsLabelSelector()); err != nil {
+	if err := r.reader.List(ctx, spCacheList); err != nil {
 		klog.ErrorS(err, "Failed to list SecretProviderCache")
 		return ctrl.Result{}, err
 	}
@@ -307,44 +271,5 @@ func (r *SecretProviderCacheReconciler) Reconcile(ctx context.Context, req ctrl.
 func (r *SecretProviderCacheReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&secretsstorev1.SecretProviderCache{}).
-		WithEventFilter(r.belongsToNodePredicate()).
 		Complete(r)
-}
-
-// belongsToNodePredicate defines predicates for handlers
-func (r *SecretProviderCacheReconciler) belongsToNodePredicate() predicate.Funcs {
-	return predicate.Funcs{
-		UpdateFunc: func(e event.UpdateEvent) bool {
-			return r.processIfBelongsToNode(e.ObjectNew)
-		},
-		CreateFunc: func(e event.CreateEvent) bool {
-			return r.processIfBelongsToNode(e.Object)
-		},
-		DeleteFunc: func(e event.DeleteEvent) bool {
-			return false
-		},
-		GenericFunc: func(e event.GenericEvent) bool {
-			return r.processIfBelongsToNode(e.Object)
-		},
-	}
-}
-
-// processIfBelongsToNode determines if the SecretProviderCache belongs to the node based on the
-// internal.secrets-store.csi.k8s.io/node-name: <node name> label. If belongs to node, then the spcps is processed.
-func (r *SecretProviderCacheReconciler) processIfBelongsToNode(objMeta metav1.Object) bool {
-	node, ok := objMeta.GetLabels()[secretsstorev1.InternalNodeLabel]
-	if !ok {
-		return false
-	}
-	if !strings.EqualFold(node, r.nodeID) {
-		return false
-	}
-	return true
-}
-
-// generateEvent generates an event
-func (r *SecretProviderCacheReconciler) generateEvent(obj apiruntime.Object, eventType, reason, message string) {
-	if obj != nil {
-		r.eventRecorder.Eventf(obj, eventType, reason, message)
-	}
 }
