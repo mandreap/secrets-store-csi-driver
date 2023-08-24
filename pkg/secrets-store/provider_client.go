@@ -466,29 +466,27 @@ func mountFromSecretProviderCache(ctx context.Context, c client.Client, r client
 		return errors.New("SpcFilesWorkloads is nil")
 	}
 
+	spcObjectVersions := spcDataBlob.FileObjectVersions
+	if spcObjectVersions == nil {
+		klog.InfoS("spcObjectVersions is nil")
+		return errors.New("spcObjectVersions is nil")
+	}
+
+	var ov []*v1alpha1.ObjectVersion
+	klog.InfoS("Retrieving object versions from cache")
+	for _, object := range spcObjectVersions {
+		ov = append(ov, &v1alpha1.ObjectVersion{Id: object.Id, Version: object.Version})
+	}
+
 	spcDataBlobSecretFile := spcDataBlob.SecretFiles
 	if spcDataBlobSecretFile == nil {
 		klog.InfoS("SecretFiles is nil")
 		return errors.New("SecretFiles is nil")
 	}
 
-	var ov []*v1alpha1.ObjectVersion
-	// TODO: we should be able to decrypt the contents here
-	klog.InfoS("Retrieving object versions from cache")
-	for _, file := range *spcDataBlobSecretFile {
-		if file.ObjectVersion == nil {
-			klog.InfoS("ObjectVersion is nil")
-			return errors.New("ObjectVersion is nil")
-		}
-		for _, v := range file.ObjectVersion {
-			objectVersions[v.Id] = v.Version
-			ov = append(ov, &v1alpha1.ObjectVersion{Id: v.Id, Version: v.Version})
-		}
-	}
-
 	klog.InfoS("Writing files from cache to target path", "targetPath", targetPath)
 	writePayloads := make([]*v1alpha1.File, 0)
-	for _, file := range *spcDataBlobSecretFile {
+	for _, file := range spcDataBlobSecretFile {
 		//file = decryptFile(file, cacheEncryptionKey)
 		writePayloads = append(writePayloads, &v1alpha1.File{
 			Path:     file.Path,

@@ -28,11 +28,12 @@ type Error struct {
 	Code string `json:"code,omitempty"`
 }
 
-type CacheObjectVersion struct {
+type CacheObjectVersions struct {
 	Id      string `json:"id,omitempty"`
 	Version string `json:"version,omitempty"`
 }
 
+// TODO: add an interface for the file contents + internal file
 type CacheFile struct {
 	// The relative path of the file within the mount.
 	// May not be an absolute path.
@@ -43,9 +44,8 @@ type CacheFile struct {
 	// Must be a decimal value between 0 and 511.
 	Mode int32 `json:"mode,omitempty"`
 	// The file contents.
-	Contents      []byte                `json:"contents,omitempty"`
-	ObjectVersion []*CacheObjectVersion `json:"object_version,omitempty"`
-	Error         *Error                `json:"error,omitempty"`
+	Contents []byte `json:"contents,omitempty"`
+	Error    *Error `json:"error,omitempty"`
 }
 
 type CacheWorkload struct {
@@ -58,8 +58,8 @@ type CacheWorkload struct {
 }
 
 type CacheSpcWorkloadFiles struct {
-	//SpcName      string                    `json:"spcName,omitempty"`
-	SecretFiles *[]*CacheFile `json:"secretFiles,omitempty"`
+	FileObjectVersions []*CacheObjectVersions `json:"fileObjectVersions,omitempty"`
+	SecretFiles        []*CacheFile           `json:"secretFiles,omitempty"`
 	// Map WorkloadName to CacheWorkload
 	WorkloadsMap map[string]*CacheWorkload `json:"workloadsMap,omitempty"`
 }
