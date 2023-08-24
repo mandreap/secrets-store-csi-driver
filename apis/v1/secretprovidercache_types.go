@@ -48,20 +48,9 @@ type CacheFile struct {
 	Error    *Error `json:"error,omitempty"`
 }
 
-type CacheWorkload struct {
-	WorkloadName       string            `json:"workloadName,omitempty"`
-	OwnerReferenceUID  string            `json:"workloadUID,omitempty"`
-	OwnerReferenceName string            `json:"ownerReferenceName,omitempty"`
-	OwnerReferenceKind string            `json:"ownerReferenceKind,omitempty"`
-	CachedPods         map[string]string `json:"cachedPods,omitempty"`
-	WarningNewUID      bool              `json:"warningNewUID,omitempty"`
-}
-
 type CacheSpcWorkloadFiles struct {
 	FileObjectVersions []*CacheObjectVersions `json:"fileObjectVersions,omitempty"`
 	SecretFiles        []*CacheFile           `json:"secretFiles,omitempty"`
-	// Map WorkloadName to CacheWorkload
-	WorkloadsMap map[string]*CacheWorkload `json:"workloadsMap,omitempty"`
 }
 
 // SecretProviderCacheSpec defines the desired state of SecretProviderCache
@@ -73,7 +62,7 @@ type SecretProviderCacheSpec struct {
 	NodePublishSecretRef string `json:"nodePublishSecretRef,omitempty"`
 
 	SecretProviderClassName string                 `json:"SecretProviderClassName,omitempty"`
-	SpcFilesWorkloads       *CacheSpcWorkloadFiles `json:"spcFilesWorkloads,omitempty"`
+	SpcCacheFilesObjects    *CacheSpcWorkloadFiles `json:"spcFilesWorkloads,omitempty"`
 }
 
 // SecretProviderCacheStatus defines the observed state of SecretProviderCache

@@ -460,10 +460,10 @@ func mountFromSecretProviderCache(ctx context.Context, c client.Client, r client
 		}
 	}
 
-	spcDataBlob := cache.Spec.SpcFilesWorkloads
+	spcDataBlob := cache.Spec.SpcCacheFilesObjects
 	if spcDataBlob == nil {
-		klog.InfoS("SpcFilesWorkloads is nil")
-		return errors.New("SpcFilesWorkloads is nil")
+		klog.InfoS("SpcCacheFilesObjects is nil")
+		return errors.New("SpcCacheFilesObjects is nil")
 	}
 
 	spcObjectVersions := spcDataBlob.FileObjectVersions

@@ -18,13 +18,11 @@ package controllers
 
 import (
 	"context"
-	"strings"
 	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apiruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 	clientcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -106,160 +104,13 @@ func (r *SecretProviderCacheReconciler) Reconcile(ctx context.Context, req ctrl.
 			}
 			continue
 		}
-		if spCache.Spec.SpcFilesWorkloads == nil {
+		if spCache.Spec.SpcCacheFilesObjects == nil {
 			spCache.Status.WarningNoPersistencyOnRestart = false
 			err := r.Status().Update(ctx, &spCache)
 			if err != nil {
 				klog.ErrorS(err, "Failed to update Status for SecretProviderCache")
 				return ctrl.Result{}, err
 			}
-		}
-		var warning bool = false
-		cacheSpcWorkloadFiles := spCache.Spec.SpcFilesWorkloads
-		if err != nil && !errors.IsNotFound(err) {
-			return ctrl.Result{RequeueAfter: 30 * time.Second}, err
-		}
-		if errors.IsNotFound(err) {
-			//TODO: if in online mode remove the spc from the cache
-			klog.Warning("Can't find SPC: %s", spcName)
-		}
-		shouldUpdateCache := false
-		mapOfPodsToDelete := make(map[string]string)
-		for _, cacheWorkload := range cacheSpcWorkloadFiles.WorkloadsMap {
-			klog.InfoS("Checking pods", "CachedPods", cacheWorkload.CachedPods)
-			//TODO: refactor these into functions
-			if cacheWorkload.OwnerReferenceKind == "Pod" {
-				klog.InfoS("Workload is a Pod", "workload = ", cacheWorkload.WorkloadName)
-				podName := cacheWorkload.WorkloadName
-				klog.InfoS("Checking pod", "pod", podName)
-				pod := &corev1.Pod{}
-				err = r.reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: podName}, pod)
-				if err != nil && !errors.IsNotFound(err) {
-					klog.ErrorS(err, "failed to get pod", "pod", klog.ObjectRef{Namespace: req.Namespace, Name: podName})
-					return ctrl.Result{RequeueAfter: 10 * time.Second}, err
-				}
-				if apierrors.IsNotFound(err) {
-					klog.InfoS("pod not found - removing it from the list", "pod", podName)
-					// if map is nil -> delete is a noop
-					//delete(cacheSpcWorkloadFiles.WorkloadsMap, podName)
-					mapOfPodsToDelete[cacheWorkload.WorkloadName] = cacheWorkload.WorkloadName
-					shouldUpdateCache = true
-					continue
-				}
-				// remove the pod if it is being terminated
-				// or the pod is in succeeded state (for jobs that complete aren't gc yet)
-				// or the pod is in a failed state (all containers get terminated)
-				if !pod.GetDeletionTimestamp().IsZero() || pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
-					klog.InfoS("pod terminating - removing it from the list", "pod", podName)
-					mapOfPodsToDelete[cacheWorkload.WorkloadName] = cacheWorkload.WorkloadName
-					shouldUpdateCache = true
-					continue
-				}
-				for _, ownerRef := range pod.OwnerReferences {
-					if ownerRef.Kind != "Pod" {
-						break
-					}
-					// can we have a deployment/replicaset etc set as owner of a pod after the pod was created?
-					klog.InfoS("Pod owner references", "ownerRef", ownerRef.Name, "ownerRefUID", ownerRef.UID)
-					podHash, ok := pod.Labels["pod-template-hash"]
-					if ownerRef.Kind != "Pod" && ok && strings.Contains(ownerRef.Name, podHash) && cacheWorkload.WorkloadName == podName {
-						cacheWorkload.OwnerReferenceName = ownerRef.Name
-						cacheWorkload.OwnerReferenceKind = ownerRef.Kind
-						cacheWorkload.OwnerReferenceUID = string(ownerRef.UID)
-						cacheWorkload.WorkloadName = strings.ReplaceAll(ownerRef.Name, podHash, "")
-						cacheWorkload.WorkloadName = strings.TrimRight(cacheWorkload.WorkloadName, "-")
-						klog.InfoS("Changing the workload kind and name in the cache:", "workloadName", cacheWorkload.WorkloadName, "workloadKind", cacheWorkload.OwnerReferenceKind)
-						shouldUpdateCache = true
-						break
-					}
-				}
-			}
-			if len(cacheWorkload.CachedPods) == 0 {
-				klog.InfoS("No pods found for workload", "workload", cacheWorkload.WorkloadName)
-				continue
-			}
-			sliceOfPodsToDelete := make(map[string]string)
-			for podName := range cacheWorkload.CachedPods {
-				klog.InfoS("Checking pod", "pod", podName)
-				pod := &corev1.Pod{}
-				err = r.reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: podName}, pod)
-				if err != nil && !errors.IsNotFound(err) {
-					klog.ErrorS(err, "failed to get pod", "pod", klog.ObjectRef{Namespace: req.Namespace, Name: podName})
-					return ctrl.Result{RequeueAfter: 10 * time.Second}, err
-				}
-
-				if apierrors.IsNotFound(err) {
-					klog.InfoS("pod not found - removing it from the list", "pod", podName)
-					// if map is nil -> delete is a noop
-					sliceOfPodsToDelete[podName] = podName
-					shouldUpdateCache = true
-					continue
-				}
-
-				// remove the pod if it is being terminated
-				// or the pod is in succeeded state (for jobs that complete aren't gc yet)
-				// or the pod is in a failed state (all containers get terminated)
-				if !pod.GetDeletionTimestamp().IsZero() || pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
-					klog.InfoS("pod terminating - removing it from the list", "pod", podName)
-					sliceOfPodsToDelete[podName] = podName
-					shouldUpdateCache = true
-					continue
-				}
-				/*
-					// can we have a deployment/replicaset etc set as owner of a pod after the pod was created?
-					// this should be a rare case and we should do the change in the associated map of workloads
-					for _, ownerRef := range pod.OwnerReferences {
-						if ownerRef.Kind != "Pod" {
-							break
-						}
-						klog.InfoS("Pod owner references", "ownerRef", ownerRef.Name, "ownerRefUID", ownerRef.UID)
-						podHash, ok := pod.Labels["pod-template-hash"]
-						if ownerRef.Kind != "Pod" && ok && strings.Contains(ownerRef.Name, podHash) && cacheWorkload.WorkloadName == podName {
-							cacheWorkload.OwnerReferenceName = ownerRef.Name
-							cacheWorkload.OwnerReferenceKind = ownerRef.Kind
-							cacheWorkload.OwnerReferenceUID = string(ownerRef.UID)
-							cacheWorkload.WorkloadName = strings.ReplaceAll(ownerRef.Name, podHash, "")
-							cacheWorkload.WorkloadName = strings.TrimRight(cacheWorkload.WorkloadName, "-")
-							klog.InfoS("Changing the workload kind and name in the cache:", "workloadName", cacheWorkload.WorkloadName, "workloadKind", cacheWorkload.OwnerReferenceKind)
-							shouldUpdateCache = true
-							break
-						}
-					}*/
-			}
-			// erase all the pods which aren't longer in the cluster
-			// todo: add a check to do this only if we're in the "online" mode
-			for podName := range sliceOfPodsToDelete {
-				klog.InfoS("Removing pod from the cache", "pod", podName)
-				delete(spCache.Spec.SpcFilesWorkloads.WorkloadsMap[cacheWorkload.WorkloadName].CachedPods, podName)
-			}
-
-			for _, cacheWorkload := range cacheSpcWorkloadFiles.WorkloadsMap {
-				if cacheWorkload.OwnerReferenceKind == "Pod" {
-					warning = true
-				}
-			}
-		}
-
-		// erase all the workloads which aren't in the cluster
-		for workloadName := range mapOfPodsToDelete {
-			klog.InfoS("Removing workload from the cache", "workload", workloadName)
-			delete(spCache.Spec.SpcFilesWorkloads.WorkloadsMap, workloadName)
-		}
-
-		if shouldUpdateCache {
-			klog.InfoS("Updating the cache", "cache name", spCache.Name)
-			err = r.writer.Update(ctx, &spCache)
-			if err != nil {
-				return ctrl.Result{RequeueAfter: 10 * time.Second}, err
-			}
-		}
-
-		klog.InfoS("Updating status to:", "warning", warning)
-		spCache.Status.WarningNoPersistencyOnRestart = warning
-		err = r.Status().Update(ctx, &spCache)
-		if err != nil {
-			klog.ErrorS(err, "Failed to update Status for SecretProviderCache")
-			return ctrl.Result{RequeueAfter: 60 * time.Second}, err
 		}
 	}
 

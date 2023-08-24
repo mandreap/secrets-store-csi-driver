@@ -92,7 +92,6 @@ func getSecretProviderItem(ctx context.Context, c client.Client, name, namespace
 }
 
 func addOrUpdateCacheObjectsVersion(cacheObjectVersionsSlice []*secretsstorev1.CacheObjectVersions, objectVersions []*v1alpha1.ObjectVersion) (bool, []*secretsstorev1.CacheObjectVersions) {
-	klog.InfoS("addOrUpdateCacheObjectsVersion", "cacheObjectVersionsSlice", cacheObjectVersionsSlice, "objectVersions", objectVersions)
 	if len(objectVersions) == 0 && len(cacheObjectVersionsSlice) == 0 {
 		return false, cacheObjectVersionsSlice
 	}
@@ -104,7 +103,6 @@ func addOrUpdateCacheObjectsVersion(cacheObjectVersionsSlice []*secretsstorev1.C
 				Version: objectVersion.Version,
 			})
 		}
-		klog.InfoS("addOrUpdateCacheObjectsVersion shouldUpdate=true", "cacheObjectVersionsSlice", cacheObjectVersionsSlice)
 		return true, cacheObjectVersionsSlice
 	}
 
@@ -132,8 +130,6 @@ func addOrUpdateCacheObjectsVersion(cacheObjectVersionsSlice []*secretsstorev1.C
 			shouldUpdate = true
 		}
 	}
-
-	klog.InfoS("addOrUpdateCacheObjectsVersion", "shouldUpdate", shouldUpdate, "cacheObjectVersionsSlice", cacheObjectVersionsSlice)
 	return shouldUpdate, cacheObjectVersionsSlice
 }
 
@@ -168,7 +164,6 @@ func addOrUpdateCacheFiles(cacheFileSlice []*secretsstorev1.CacheFile, fileSecre
 			shouldUpdate = true
 		}
 	}
-	klog.InfoS("addOrUpdateCacheFiles", "shouldUpdate", shouldUpdate, "cacheFileSlice", cacheFileSlice)
 	return shouldUpdate, cacheFileSlice
 }
 
@@ -180,7 +175,6 @@ func addObjectVersionsToCacheObjectVersions(cacheObjectVersionsSlice []*secretss
 		}
 		cacheObjectVersionsSlice = append(cacheObjectVersionsSlice, cacheObjectVersion)
 	}
-	klog.InfoS("addObjectVersionsToCacheObjectVersions", "cacheObjectVersionsSlice", cacheObjectVersionsSlice)
 	return cacheObjectVersionsSlice
 }
 
@@ -194,14 +188,12 @@ func addFileSecretsToCacheFile(cacheFileSlice []*secretsstorev1.CacheFile, fileS
 
 		cacheFileSlice = append(cacheFileSlice, cacheFile)
 	}
-	klog.InfoS("addFileSecretsToCacheFile", "cacheFileSlice", cacheFileSlice)
 	return cacheFileSlice
 }
 
 // createOrUpdateSecretProviderCache creates secret provider cache if it doesn't exist.
 // if the secret provider cache already exists, it updates the status and owner references.
 func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, reader client.Reader, serviceAccountName, podName, namespace, spcName, nodeID, nodeRefKey string, fileSecrets []*v1alpha1.File, objectVersions []*v1alpha1.ObjectVersion, cacheEncryptionKey *corev1.Secret) error {
-	// todo: this should be UID
 	nodeRef := nodeRefKey
 	if nodeRef == "" {
 		nodeRef = "invalidnoderef"
@@ -209,64 +201,18 @@ func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, rea
 	spCacheName := namespace + spcName + serviceAccountName + nodeRef
 	klog.InfoS("creating secret provider cache", "spCache", spCacheName)
 
-	// TODO: add object versions to cache
-	secretFiles := []*secretsstorev1.CacheFile{}
+	var secretFiles []*secretsstorev1.CacheFile
 	secretFiles = addFileSecretsToCacheFile(secretFiles, fileSecrets)
 
-	//TODO: can just remove this and use the cacheObjectVersionsSlice directly from the cacheSpcWorkloadFiles
-	cacheObjectVersions := []*secretsstorev1.CacheObjectVersions{}
+	var cacheObjectVersions []*secretsstorev1.CacheObjectVersions
 	cacheObjectVersions = addObjectVersionsToCacheObjectVersions(cacheObjectVersions, objectVersions)
-
-	// retrieve the pod and try to get its owners
-	pod := &corev1.Pod{}
-	err := reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: podName}, pod)
-	if err != nil {
-		klog.ErrorS(err, "failed to get pod", "podName", podName)
-		return err
-	}
-
-	var warningNoPersistencyOnRestart bool = true
-	var workloadName string = podName
-	var ownerRefName string = podName
-	var ownerRefKind string = "Pod"
-	var ownerUID string = ""
-	//TODO: what if we have n owners
-	if len(pod.OwnerReferences) == 0 {
-		klog.InfoS("pod doesn't have owner references:", "podName", podName)
-		ownerUID = string(pod.UID)
-	} else {
-		for _, ownerRef := range pod.OwnerReferences {
-			klog.InfoS("Pod owner references", "ownerRef", ownerRef.Name, "ownerRefUID", ownerRef.UID, "ownerRefKind", ownerRef.Kind)
-			podHash, ok := pod.Labels["pod-template-hash"]
-			if ownerRef.Kind != "Pod" && ok && strings.Contains(ownerRef.Name, podHash) {
-				warningNoPersistencyOnRestart = false
-				ownerUID = string(ownerRef.UID)
-				ownerRefName = ownerRef.Name
-				ownerRefKind = ownerRef.Kind
-				workloadName = strings.ReplaceAll(ownerRef.Name, podHash, "")
-				workloadName = strings.TrimRight(workloadName, "-")
-				break
-			}
-		}
-	}
-
-	cacheWorkloadItem := &secretsstorev1.CacheWorkload{
-		WorkloadName:       workloadName,
-		OwnerReferenceName: ownerRefName,
-		OwnerReferenceKind: ownerRefKind,
-		OwnerReferenceUID:  ownerUID,
-		CachedPods:         map[string]string{podName: podName},
-	}
-
-	workloadsMap := make(map[string]*secretsstorev1.CacheWorkload)
-	workloadsMap[workloadName] = cacheWorkloadItem
+	warningNoPersistencyOnRestart := false
 
 	cacheSpcWorkloadFiles := &secretsstorev1.CacheSpcWorkloadFiles{
 		FileObjectVersions: cacheObjectVersions,
 		SecretFiles:        secretFiles,
-		WorkloadsMap:       workloadsMap,
 	}
-	klog.InfoS("cacheSpcWorkloadFiles", "cacheSpcWorkloadFiles", cacheSpcWorkloadFiles)
+
 	spCache := &secretsstorev1.SecretProviderCache{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      spCacheName,
@@ -275,17 +221,16 @@ func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, rea
 		Spec: secretsstorev1.SecretProviderCacheSpec{
 			ServiceAccountName:      serviceAccountName,
 			NodePublishSecretRef:    nodeRefKey,
-			SpcFilesWorkloads:       cacheSpcWorkloadFiles,
+			SpcCacheFilesObjects:    cacheSpcWorkloadFiles,
 			SecretProviderClassName: spcName,
 		},
 		Status: secretsstorev1.SecretProviderCacheStatus{
 			WarningNoPersistencyOnRestart: warningNoPersistencyOnRestart,
 		},
 	}
-	klog.InfoS("spCache before creation", "spCache", spCache)
 
 	spc := &secretsstorev1.SecretProviderClass{}
-	err = reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: spcName}, spc)
+	err := reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: spcName}, spc)
 	if err != nil {
 		klog.ErrorS(err, "failed to get secretproviderclass", "spcName", spcName)
 		return err
@@ -304,8 +249,7 @@ func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, rea
 
 	err = c.Create(ctx, spCache)
 	if err == nil {
-		klog.Info("SPCache created: %s", spCacheName)
-		klog.InfoS("SecretProviderCache: successfully created", "spCache", spCache)
+		klog.Info("SecretProviderCache: %s created", spCacheName)
 		spCache.Status.WarningNoPersistencyOnRestart = warningNoPersistencyOnRestart
 		return c.Status().Update(ctx, spCache)
 	}
@@ -336,14 +280,14 @@ func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, rea
 	}()
 
 	var shouldUpdateCache bool = false
-	shouldUpdateCache, spCacheUpdate.Spec.SpcFilesWorkloads.SecretFiles = addOrUpdateCacheFiles(spCacheUpdate.Spec.SpcFilesWorkloads.SecretFiles, fileSecrets)
+	shouldUpdateCache, spCacheUpdate.Spec.SpcCacheFilesObjects.SecretFiles = addOrUpdateCacheFiles(spCacheUpdate.Spec.SpcCacheFilesObjects.SecretFiles, fileSecrets)
 
 	var shouldUpdateCacheSecretVersions bool = false
-	shouldUpdateCacheSecretVersions, spCacheUpdate.Spec.SpcFilesWorkloads.FileObjectVersions = addOrUpdateCacheObjectsVersion(spCacheUpdate.Spec.SpcFilesWorkloads.FileObjectVersions, objectVersions)
+	shouldUpdateCacheSecretVersions, spCacheUpdate.Spec.SpcCacheFilesObjects.FileObjectVersions = addOrUpdateCacheObjectsVersion(spCacheUpdate.Spec.SpcCacheFilesObjects.FileObjectVersions, objectVersions)
 	if shouldUpdateCacheSecretVersions {
 		shouldUpdateCache = shouldUpdateCacheSecretVersions
 	}
-	klog.InfoS("spCacheUpdate.Spec.SpcFilesWorkloads.FileObjectVersions", "spCacheUpdate.Spec.SpcFilesWorkloads.FileObjectVersions", spCacheUpdate.Spec.SpcFilesWorkloads.FileObjectVersions)
+	klog.InfoS("spCacheUpdate.Spec.SpcCacheFilesObjects.FileObjectVersions", "spCacheUpdate.Spec.SpcCacheFilesObjects.FileObjectVersions", spCacheUpdate.Spec.SpcCacheFilesObjects.FileObjectVersions)
 
 	// TODO: remove these 2 -> should never happen
 	if serviceAccountName != spCacheUpdate.Spec.ServiceAccountName {
@@ -355,41 +299,6 @@ func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, rea
 		klog.InfoS("NodePublishSecretRef is different, updating the cache:", "nodeRefKey", nodeRefKey)
 		spCacheUpdate.Spec.NodePublishSecretRef = nodeRefKey
 		shouldUpdateCache = true
-	}
-
-	klog.InfoS("Check the workload is present:", "workload ", workloadName, "spCacheUpdate.Spec.SpcFilesWorkloads.WorkloadsMap", spCacheUpdate.Spec.SpcFilesWorkloads.WorkloadsMap)
-	if spCacheUpdate.Spec.SpcFilesWorkloads.WorkloadsMap == nil {
-		klog.InfoS("Workload map is nil, creating a new one")
-		spCacheUpdate.Spec.SpcFilesWorkloads.WorkloadsMap = workloadsMap
-		shouldUpdateCache = true
-	} else {
-		existingWorkloadItem, ok := spCacheUpdate.Spec.SpcFilesWorkloads.WorkloadsMap[workloadName]
-		if !ok {
-			klog.InfoS("Adding a new workload to the cache:", "workloadName", workloadName)
-			spCacheUpdate.Spec.SpcFilesWorkloads.WorkloadsMap[workloadName] = cacheWorkloadItem
-			shouldUpdateCache = true
-		} else {
-
-			klog.InfoS("Workload already present in the cache:", "workloadName", workloadName)
-			klog.InfoS("Check pod is present", "pod = ", podName)
-			if spCacheUpdate.Spec.SpcFilesWorkloads.WorkloadsMap[workloadName].CachedPods == nil {
-				klog.InfoS("Pod map is nil, creating a new one")
-				spCacheUpdate.Spec.SpcFilesWorkloads.WorkloadsMap[workloadName].CachedPods = map[string]string{podName: podName}
-				shouldUpdateCache = true
-			} else {
-				_, podIsPresent := existingWorkloadItem.CachedPods[podName]
-				if !podIsPresent {
-					klog.InfoS("Adding a new pod to the cache:", "workloadName", workloadName, "podName", podName, "podUID", pod.UID)
-					spCacheUpdate.Spec.SpcFilesWorkloads.WorkloadsMap[workloadName].CachedPods[podName] = podName
-					shouldUpdateCache = true
-				}
-			}
-
-			if ownerUID != existingWorkloadItem.OwnerReferenceUID {
-				klog.InfoS("Different UIDs", "workloadName", workloadName, "ownerUID", ownerUID, "existing ownerUID", existingWorkloadItem.OwnerReferenceUID)
-				spCacheUpdate.Spec.SpcFilesWorkloads.WorkloadsMap[workloadName].WarningNewUID = true
-			}
-		}
 	}
 
 	for _, ownerRef := range spCacheUpdate.OwnerReferences {
