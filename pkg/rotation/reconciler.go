@@ -347,6 +347,7 @@ func (r *Reconciler) reconcile(ctx context.Context, spcps *secretsstorev1.Secret
 	// accessing external secrets store
 	nodePublishSecretRef := podVol.CSI.NodePublishSecretRef
 
+	var nodePublishRef string = "invalidnoderef"
 	var secretsJSON []byte
 	nodePublishSecretData := make(map[string]string)
 	// read the Kubernetes secret referenced in NodePublishSecretRef and marshal it
@@ -367,6 +368,10 @@ func (r *Reconciler) reconcile(ctx context.Context, spcps *secretsstorev1.Secret
 
 		for k, v := range secret.Data {
 			nodePublishSecretData[k] = string(v)
+			klog.InfoS("EWS Info:", "k", k, "v", string(v))
+			if k == "clientid" {
+				nodePublishRef = string(v)
+			}
 		}
 	}
 
@@ -398,11 +403,6 @@ func (r *Reconciler) reconcile(ctx context.Context, spcps *secretsstorev1.Secret
 	podName := pod.Name
 	podNamespace := pod.Namespace
 	spcName := spc.Name
-	nodePublishRef := ""
-	if nodePublishSecretRef != nil {
-		nodePublishRef := nodePublishSecretRef.Name
-		klog.InfoS("nodePublishSecretRef found", "nodePublishRef", nodePublishRef)
-	}
 	nodeID := spcps.Labels[secretsstorev1.InternalNodeLabel]
 
 	//TODO: we need to reconcile the cache first here, and consider mounting from the cache if need be (if the provider agrees)

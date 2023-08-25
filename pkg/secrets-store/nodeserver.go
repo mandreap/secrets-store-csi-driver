@@ -82,16 +82,6 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	var mounted bool
 	errorReason := internalerrors.FailedToMount
 
-	// generate cacheEncryptionKey if it doesn't exist, retriver it from the system if it does
-	// this needs to be sent to the provider to decrypt the cache
-	/*
-		if ns.cacheEncryptionKey == nil {
-			ns.cacheEncryptionKey, err = ns.generateCacheEncryptionKey(ctx)
-			if err != nil {
-				return nil, fmt.Errorf("failed to generate cache encryption key, err: %w", err)
-			}
-		}*/
-
 	defer func() {
 		if err != nil {
 			// if there is an error at any stage during node publish volume and if the path
@@ -234,7 +224,6 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		klog.ErrorS(err, "failed to marshal node publish secrets", "pod", klog.ObjectRef{Namespace: podNamespace, Name: podName})
 		return nil, err
 	}
-	klog.InfoS("secrets nodePublishReference", "secrets", secretStr, "secrets", secrets)
 
 	permissionStr, err := json.Marshal(FilePermission)
 	if err != nil {
