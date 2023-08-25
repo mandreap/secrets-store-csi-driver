@@ -30,7 +30,9 @@ import (
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	secretsstorev1 "sigs.k8s.io/secrets-store-csi-driver/apis/v1"
 	"sigs.k8s.io/secrets-store-csi-driver/pkg/client/clientset/versioned/scheme"
 )
@@ -40,7 +42,6 @@ type SecretProviderCacheReconciler struct {
 	client.Client
 	mutex         *sync.Mutex
 	scheme        *apiruntime.Scheme
-	nodeID        string
 	reader        client.Reader
 	writer        client.Writer
 	eventRecorder record.EventRecorder
@@ -57,7 +58,6 @@ func NewSecretProviderCacheReconciler(mgr manager.Manager, nodeID string) (*Secr
 		Client:        mgr.GetClient(),
 		mutex:         &sync.Mutex{},
 		scheme:        mgr.GetScheme(),
-		nodeID:        nodeID,
 		reader:        mgr.GetCache(),
 		writer:        mgr.GetClient(),
 		eventRecorder: recorder,
@@ -91,26 +91,24 @@ func (r *SecretProviderCacheReconciler) Reconcile(ctx context.Context, req ctrl.
 		// check if the associated spc is deleted
 		spcName := spCache.Spec.SecretProviderClassName
 		spc := &secretsstorev1.SecretProviderClass{}
-		err := r.reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: spcName}, spc)
+		err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: spcName}, spc)
 		if err != nil && !errors.IsNotFound(err) {
 			return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 		}
 		if errors.IsNotFound(err) {
 			klog.InfoS("SPC not found - removing the cache", "spc", spcName)
-			err = r.writer.Delete(ctx, &spCache)
+			err = r.Delete(ctx, &spCache)
 			if err != nil {
 				klog.ErrorS(err, "Failed to delete SecretProviderCache")
-				return ctrl.Result{}, err
+				return ctrl.Result{RequeueAfter: 1 * time.Minute}, err
 			}
 			continue
 		}
-		if spCache.Spec.SpcCacheFilesObjects == nil {
-			spCache.Status.WarningNoPersistencyOnRestart = false
-			err := r.Status().Update(ctx, &spCache)
-			if err != nil {
-				klog.ErrorS(err, "Failed to update Status for SecretProviderCache")
-				return ctrl.Result{}, err
-			}
+
+		err = r.Status().Update(ctx, &spCache)
+		if err != nil {
+			klog.ErrorS(err, "Failed to update Status for SecretProviderCache")
+			return ctrl.Result{RequeueAfter: 60 * time.Second}, err
 		}
 	}
 
@@ -119,8 +117,25 @@ func (r *SecretProviderCacheReconciler) Reconcile(ctx context.Context, req ctrl.
 	return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 }
 
+func (r *SecretProviderCacheReconciler) ownerWasErased() predicate.Funcs {
+	return predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldSecretProviderCache, ok := e.ObjectOld.(*secretsstorev1.SecretProviderCache)
+			if !ok {
+				return false
+			}
+			newSecretProviderCache, ok := e.ObjectNew.(*secretsstorev1.SecretProviderCache)
+			if !ok {
+				return false
+			}
+			return oldSecretProviderCache.ObjectMeta.OwnerReferences != nil && newSecretProviderCache.ObjectMeta.OwnerReferences == nil
+		},
+	}
+}
+
 func (r *SecretProviderCacheReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&secretsstorev1.SecretProviderCache{}).
+		WithEventFilter(r.ownerWasErased()).
 		Complete(r)
 }

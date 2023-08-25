@@ -152,15 +152,6 @@ func mainErr() error {
 						},
 					),
 				},
-				// this enables filtered watch of secretproviderclasspodstatuses based on the internal node label
-				// internal.secrets-store.csi.k8s.io/node-name=<node name> added by csi driver
-				&secretsstorev1.SecretProviderCache{}: {
-					Label: labels.SelectorFromSet(
-						labels.Set{
-							secretsstorev1.InternalNodeLabel: *nodeID,
-						},
-					),
-				},
 				// this enables filtered watch of secrets based on the label (eg. secrets-store.csi.k8s.io/managed=true)
 				// added to the secrets created by the CSI driver
 				&corev1.Secret{}: {
