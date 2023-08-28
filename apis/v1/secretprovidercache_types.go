@@ -61,8 +61,8 @@ type SecretProviderCacheSpec struct {
 	ServiceAccountName   string `json:"serviceAccountName,omitempty"`
 	NodePublishSecretRef string `json:"nodePublishSecretRef,omitempty"`
 
-	SecretProviderClassName string                 `json:"SecretProviderClassName,omitempty"`
-	SpcCacheFilesObjects    *CacheSpcWorkloadFiles `json:"spcFilesWorkloads,omitempty"`
+	SecretProviderClassName string                 `json:"secretProviderClassName,omitempty"`
+	SpcCacheFilesObjects    *CacheSpcWorkloadFiles `json:"spcCacheFilesObjects,omitempty"`
 }
 
 // SecretProviderCacheStatus defines the observed state of SecretProviderCache
