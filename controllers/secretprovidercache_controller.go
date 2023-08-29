@@ -95,7 +95,7 @@ func (r *SecretProviderCacheReconciler) Reconcile(ctx context.Context, req ctrl.
 		if err != nil && !errors.IsNotFound(err) {
 			return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 		}
-		if errors.IsNotFound(err) {
+		if errors.IsNotFound(err) && len(spcName) > 0 {
 			klog.InfoS("SPC not found - removing the cache", "spc", spcName)
 			err = r.Delete(ctx, &spCache)
 			if err != nil {
