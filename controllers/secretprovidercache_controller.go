@@ -89,7 +89,7 @@ func (r *SecretProviderCacheReconciler) Reconcile(ctx context.Context, req ctrl.
 		spCache := spCaches[i]
 		namespace := spCache.ObjectMeta.Namespace
 		// check if the associated spc is deleted
-		spcName := spCache.Spec.SecretProviderClassName
+		spcName := spCache.Name
 		spc := &secretsstorev1.SecretProviderClass{}
 		err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: spcName}, spc)
 		if err != nil && !errors.IsNotFound(err) {
