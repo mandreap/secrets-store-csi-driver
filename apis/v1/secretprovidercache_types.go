@@ -65,9 +65,8 @@ type CacheAuthorizationInformation struct {
 
 // SecretProviderCacheSpec defines the desired state of SecretProviderCache
 type SecretProviderCacheSpec struct {
-	SecretProviderClassName string                         `json:"secretProviderClassName,omitempty"`
-	CacheAuthorizationData  *CacheAuthorizationInformation `json:"cacheAuthorizationInformation,omitempty"`
-	SpcCacheFilesObjects    *CacheSpcWorkloadFiles         `json:"spcCacheFilesObjects,omitempty"`
+	CacheAuthorizationData *CacheAuthorizationInformation `json:"cacheAuthorizationInformation,omitempty"`
+	SpcCacheFilesObjects   *CacheSpcWorkloadFiles         `json:"spcCacheFilesObjects,omitempty"`
 }
 
 // SecretProviderCacheStatus defines the observed state of SecretProviderCache

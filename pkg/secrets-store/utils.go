@@ -231,7 +231,7 @@ func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, rea
 	if nodeRef == "" {
 		nodeRef = "invalidnoderef"
 	}
-	spCacheName := namespace + spcName
+	spCacheName := spcName
 	klog.InfoS("creating secret provider cache", "spCache", spCacheName)
 
 	var secretFiles []*secretsstorev1.CacheFile
@@ -261,9 +261,8 @@ func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, rea
 			Namespace: namespace,
 		},
 		Spec: secretsstorev1.SecretProviderCacheSpec{
-			CacheAuthorizationData:  cacheAuthorization,
-			SpcCacheFilesObjects:    cacheSpcWorkloadFiles,
-			SecretProviderClassName: spcName,
+			CacheAuthorizationData: cacheAuthorization,
+			SpcCacheFilesObjects:   cacheSpcWorkloadFiles,
 		},
 		Status: secretsstorev1.SecretProviderCacheStatus{
 			WarningNoPersistencyOnRestart: warningNoPersistencyOnRestart,
