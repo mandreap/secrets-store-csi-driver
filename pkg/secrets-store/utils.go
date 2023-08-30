@@ -133,6 +133,17 @@ func addOrUpdateCacheObjectsVersion(cacheObjectVersionsSlice []*secretsstorev1.C
 	return shouldUpdate, cacheObjectVersionsSlice
 }
 
+func addObjectVersionsToCacheObjectVersions(cacheObjectVersionsSlice []*secretsstorev1.CacheObjectVersions, objectVersions []*v1alpha1.ObjectVersion) []*secretsstorev1.CacheObjectVersions {
+	for _, objectVersion := range objectVersions {
+		cacheObjectVersion := &secretsstorev1.CacheObjectVersions{
+			Id:      objectVersion.Id,
+			Version: objectVersion.Version,
+		}
+		cacheObjectVersionsSlice = append(cacheObjectVersionsSlice, cacheObjectVersion)
+	}
+	return cacheObjectVersionsSlice
+}
+
 func addOrUpdateCacheFiles(cacheFileSlice []*secretsstorev1.CacheFile, fileSecrets []*v1alpha1.File) (bool, []*secretsstorev1.CacheFile) {
 	var shouldUpdate bool = false
 	for _, fileSecret := range fileSecrets {
@@ -167,17 +178,6 @@ func addOrUpdateCacheFiles(cacheFileSlice []*secretsstorev1.CacheFile, fileSecre
 	return shouldUpdate, cacheFileSlice
 }
 
-func addObjectVersionsToCacheObjectVersions(cacheObjectVersionsSlice []*secretsstorev1.CacheObjectVersions, objectVersions []*v1alpha1.ObjectVersion) []*secretsstorev1.CacheObjectVersions {
-	for _, objectVersion := range objectVersions {
-		cacheObjectVersion := &secretsstorev1.CacheObjectVersions{
-			Id:      objectVersion.Id,
-			Version: objectVersion.Version,
-		}
-		cacheObjectVersionsSlice = append(cacheObjectVersionsSlice, cacheObjectVersion)
-	}
-	return cacheObjectVersionsSlice
-}
-
 func addFileSecretsToCacheFile(cacheFileSlice []*secretsstorev1.CacheFile, fileSecrets []*v1alpha1.File) []*secretsstorev1.CacheFile {
 	for _, file := range fileSecrets {
 		cacheFile := &secretsstorev1.CacheFile{
@@ -191,6 +191,39 @@ func addFileSecretsToCacheFile(cacheFileSlice []*secretsstorev1.CacheFile, fileS
 	return cacheFileSlice
 }
 
+func addOrUpdateServiceAccountInformation(serviceAccountData []*secretsstorev1.ServiceAccountInformation, serviceAccountName string, serviceAccountAudience []string) (bool, []*secretsstorev1.ServiceAccountInformation) {
+	var shouldUpdate bool = false
+	for _, serviceAccount := range serviceAccountData {
+		if serviceAccount.ServiceAccountName == serviceAccountName {
+			for _, audience := range serviceAccountAudience {
+				foundAudience := false
+				for _, existingAudience := range serviceAccount.ServiceAccountAudience {
+					if audience == existingAudience {
+						foundAudience = true
+						break
+					}
+				}
+				if !foundAudience {
+					serviceAccount.ServiceAccountAudience = append(serviceAccount.ServiceAccountAudience, audience)
+					shouldUpdate = true
+				}
+			}
+			return shouldUpdate, serviceAccountData
+		}
+	}
+	// add the service account to the cache
+	serviceAccountData = addServiceAccountData(serviceAccountData, serviceAccountName, serviceAccountAudience)
+	return shouldUpdate, serviceAccountData
+}
+
+func addServiceAccountData(serviceAccountData []*secretsstorev1.ServiceAccountInformation, serviceAccountName string, serviceAccountAudience []string) []*secretsstorev1.ServiceAccountInformation {
+	serviceAccountData = append(serviceAccountData, &secretsstorev1.ServiceAccountInformation{
+		ServiceAccountName:     serviceAccountName,
+		ServiceAccountAudience: serviceAccountAudience,
+	})
+	return serviceAccountData
+}
+
 // createOrUpdateSecretProviderCache creates secret provider cache if it doesn't exist.
 // if the secret provider cache already exists, it updates the status and owner references.
 func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, reader client.Reader, serviceAccountName, podName, namespace, spcName, nodeID, nodeRefKey string, fileSecrets []*v1alpha1.File, objectVersions []*v1alpha1.ObjectVersion, cacheEncryptionKey *corev1.Secret) error {
@@ -198,7 +231,7 @@ func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, rea
 	if nodeRef == "" {
 		nodeRef = "invalidnoderef"
 	}
-	spCacheName := namespace + spcName + serviceAccountName + nodeRef
+	spCacheName := namespace + spcName
 	klog.InfoS("creating secret provider cache", "spCache", spCacheName)
 
 	var secretFiles []*secretsstorev1.CacheFile
@@ -213,14 +246,22 @@ func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, rea
 		SecretFiles:        secretFiles,
 	}
 
+	var serviceAccountData []*secretsstorev1.ServiceAccountInformation
+	serviceAccountAudience := []string{}
+	serviceAccountData = addServiceAccountData(serviceAccountData, serviceAccountName, serviceAccountAudience)
+
+	cacheAuthorization := &secretsstorev1.CacheAuthorizationInformation{
+		NodePublishSecretRef: nodeRefKey,
+		ServiceAccountData:   serviceAccountData,
+	}
+
 	spCache := &secretsstorev1.SecretProviderCache{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      spCacheName,
 			Namespace: namespace,
 		},
 		Spec: secretsstorev1.SecretProviderCacheSpec{
-			ServiceAccountName:      serviceAccountName,
-			NodePublishSecretRef:    nodeRefKey,
+			CacheAuthorizationData:  cacheAuthorization,
 			SpcCacheFilesObjects:    cacheSpcWorkloadFiles,
 			SecretProviderClassName: spcName,
 		},
@@ -289,15 +330,18 @@ func createOrUpdateSecretProviderCache(ctx context.Context, c client.Client, rea
 	}
 	klog.InfoS("spCacheUpdate.Spec.SpcCacheFilesObjects.FileObjectVersions", "spCacheUpdate.Spec.SpcCacheFilesObjects.FileObjectVersions", spCacheUpdate.Spec.SpcCacheFilesObjects.FileObjectVersions)
 
-	// TODO: remove these 2 -> should never happen
-	if serviceAccountName != spCacheUpdate.Spec.ServiceAccountName {
-		klog.InfoS("ServiceAccountName is different, updating the cache:", "serviceAccountName", serviceAccountName)
-		spCacheUpdate.Spec.ServiceAccountName = serviceAccountName
-		shouldUpdateCache = true
+	// update service account
+	var shouldUpdateCacheServiceAccount bool = false
+	shouldUpdateCacheServiceAccount, spCacheUpdate.Spec.CacheAuthorizationData.ServiceAccountData = addOrUpdateServiceAccountInformation(spCacheUpdate.Spec.CacheAuthorizationData.ServiceAccountData, serviceAccountName, serviceAccountAudience)
+	if shouldUpdateCacheServiceAccount {
+		shouldUpdateCache = shouldUpdateCacheServiceAccount
 	}
-	if spCacheUpdate.Spec.NodePublishSecretRef != nodeRefKey {
+	klog.InfoS("spCacheUpdate.Spec.CacheAuthorizationData.ServiceAccountData", "spCacheUpdate.Spec.CacheAuthorizationData.ServiceAccountData", spCacheUpdate.Spec.CacheAuthorizationData.ServiceAccountData)
+
+	// update node publish secret ref
+	if spCacheUpdate.Spec.CacheAuthorizationData.NodePublishSecretRef != nodeRefKey {
 		klog.InfoS("NodePublishSecretRef is different, updating the cache:", "nodeRefKey", nodeRefKey)
-		spCacheUpdate.Spec.NodePublishSecretRef = nodeRefKey
+		spCacheUpdate.Spec.CacheAuthorizationData.NodePublishSecretRef = nodeRefKey
 		shouldUpdateCache = true
 	}
 

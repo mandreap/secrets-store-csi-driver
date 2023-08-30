@@ -254,7 +254,7 @@ func retrieveCacheAndSetSimulationMode(ctx context.Context, csiDriverProviderCli
 	if nodeRef == "" {
 		nodeRef = "invalidnoderef"
 	}
-	cacheName := namespace + spcName + serviceAccountName + nodeRef
+	cacheName := namespace + spcName
 	err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: cacheName}, cache)
 	if err == nil {
 		klog.InfoS("Cache found set simulation mode", "cache", cacheName)
@@ -434,7 +434,7 @@ func mountFromSecretProviderCache(ctx context.Context, c client.Client, r client
 	if nodeRef == "" {
 		nodeRef = "invalidnoderef"
 	}
-	cacheName := namespace + spcName + serviceAccountName + nodeRef
+	cacheName := namespace + spcName
 	cache := &secretsstorev1.SecretProviderCache{}
 	err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: cacheName}, cache)
 	if apierrors.IsNotFound(err) {
@@ -446,16 +446,25 @@ func mountFromSecretProviderCache(ctx context.Context, c client.Client, r client
 		return err
 	}
 
-	// TODO: UID comparison here
-	if serviceAccountName != cache.Spec.ServiceAccountName {
-		klog.InfoS("ServiceAccountName mismatch", "serviceAccountName", serviceAccountName, "cache.Spec.ServiceAccountName", cache.Spec.ServiceAccountName)
-		return errors.New("ServiceAccountName mismatch")
+	// check if the service account is in the list
+	if cache.Spec.CacheAuthorizationData != nil {
+		serviceAccountFound := false
+		for _, serviceAccount := range cache.Spec.CacheAuthorizationData.ServiceAccountData {
+			if serviceAccount.ServiceAccountName == serviceAccountName {
+				serviceAccountFound = true
+				break
+			}
+		}
+		if !serviceAccountFound {
+			klog.InfoS("ServiceAccountName not found in cache", "serviceAccountName", serviceAccountName)
+			return errors.New("ServiceAccountName not found in cache")
+		}
 	}
 
-	if len(cache.Spec.NodePublishSecretRef) > 0 {
-		klog.InfoS("NodePublishSecretRef is not empty", "NodePublishSecretRef", cache.Spec.NodePublishSecretRef)
-		if nodeRefKey != cache.Spec.NodePublishSecretRef {
-			klog.InfoS("NodePublishSecretRef mismatch", "nodeRefKey", nodeRefKey, "cache.Spec.NodePublishSecretRef", cache.Spec.NodePublishSecretRef)
+	if len(cache.Spec.CacheAuthorizationData.NodePublishSecretRef) > 0 {
+		klog.InfoS("NodePublishSecretRef is not empty", "NodePublishSecretRef", cache.Spec.CacheAuthorizationData.NodePublishSecretRef)
+		if nodeRefKey != cache.Spec.CacheAuthorizationData.NodePublishSecretRef {
+			klog.InfoS("NodePublishSecretRef mismatch", "nodeRefKey", nodeRefKey, "cache.Spec.NodePublishSecretRef", cache.Spec.CacheAuthorizationData.NodePublishSecretRef)
 			return errors.New("NodePublishSecretRef mismatch")
 		}
 	}

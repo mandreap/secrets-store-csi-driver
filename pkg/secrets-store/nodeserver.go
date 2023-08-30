@@ -202,6 +202,7 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 			return nil, err
 		}
 		for k, v := range serviceAccountTokenAttrs {
+			klog.InfoS("Setting service account token attr", "key", k, "value", v)
 			parameters[k] = v
 		}
 	}

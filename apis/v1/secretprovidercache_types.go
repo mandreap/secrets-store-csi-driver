@@ -53,16 +53,21 @@ type CacheSpcWorkloadFiles struct {
 	SecretFiles        []*CacheFile           `json:"secretFiles,omitempty"`
 }
 
+type ServiceAccountInformation struct {
+	ServiceAccountName     string   `json:"serviceAccountName,omitempty"`
+	ServiceAccountAudience []string `json:"serviceAccountAudience,omitempty"`
+}
+
+type CacheAuthorizationInformation struct {
+	ServiceAccountData   []*ServiceAccountInformation `json:"serviceAccountInformation,omitempty"`
+	NodePublishSecretRef string                       `json:"nodePublishSecretRef,omitempty"`
+}
+
 // SecretProviderCacheSpec defines the desired state of SecretProviderCache
 type SecretProviderCacheSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
-	ServiceAccountName   string `json:"serviceAccountName,omitempty"`
-	NodePublishSecretRef string `json:"nodePublishSecretRef,omitempty"`
-
-	SecretProviderClassName string                 `json:"secretProviderClassName,omitempty"`
-	SpcCacheFilesObjects    *CacheSpcWorkloadFiles `json:"spcCacheFilesObjects,omitempty"`
+	SecretProviderClassName string                         `json:"secretProviderClassName,omitempty"`
+	CacheAuthorizationData  *CacheAuthorizationInformation `json:"cacheAuthorizationInformation,omitempty"`
+	SpcCacheFilesObjects    *CacheSpcWorkloadFiles         `json:"spcCacheFilesObjects,omitempty"`
 }
 
 // SecretProviderCacheStatus defines the observed state of SecretProviderCache
